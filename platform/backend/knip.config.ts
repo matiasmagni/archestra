@@ -3,12 +3,7 @@ import type { KnipConfig } from "knip";
 const config: KnipConfig = {
   entry: ["src/**/*.test.ts", "src/standalone-scripts/**/*.ts"],
   project: ["src/**/*.ts", "*.config.ts"],
-  ignore: [
-    "src/**/*.test.ts",
-    "src/database/migrations/**",
-    "src/routes/chat/routes.ts",
-    "src/types/tool-execution.ts",
-  ],
+  ignore: ["src/**/*.test.ts", "src/database/migrations/**", "src/types/tool-execution.ts"],
   ignoreDependencies: [
     // Workspace dependency - resolved by pnpm
     "@shared",
