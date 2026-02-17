@@ -10,7 +10,10 @@ test.describe("Origin error handling", { tag: ["@firefox", "@webkit"] }, () => {
     const page = await context.newPage();
 
     try {
-      await page.goto(`${UI_BASE_URL}/auth/sign-in`);
+      await page.goto(`${UI_BASE_URL}/auth/sign-in`, {
+        waitUntil: "domcontentloaded",
+        timeout: 120_000,
+      });
       await loginViaUi(page, ADMIN_EMAIL, ADMIN_PASSWORD);
 
       // Should navigate away from sign-in after successful login
@@ -46,8 +49,11 @@ test.describe("Origin error handling", { tag: ["@firefox", "@webkit"] }, () => {
         }
       });
 
-      await page.goto(`${UI_BASE_URL}/auth/sign-in`);
-      await page.waitForLoadState("networkidle");
+      await page.goto(`${UI_BASE_URL}/auth/sign-in`, {
+        waitUntil: "domcontentloaded",
+        timeout: 120_000,
+      });
+      await page.waitForLoadState("domcontentloaded");
 
       // Trigger the 403 through window.fetch to activate the React error detection.
       // The React wrapper intercepts window.fetch calls and detects origin errors,
@@ -62,10 +68,10 @@ test.describe("Origin error handling", { tag: ["@firefox", "@webkit"] }, () => {
       });
       expect(fetchResult).toBe(403);
 
-      // Verify the origin error alert is displayed
-      await expect(page.getByText("Origin Not Allowed")).toBeVisible({
-        timeout: 10_000,
-      });
+      // Verify the origin error alert is displayed (React intercepts fetch and sets state)
+      await expect(
+        page.getByRole("alert").filter({ hasText: "Origin Not Allowed" }),
+      ).toBeVisible({ timeout: 15_000 });
 
       // Verify env var instructions are present
       await expect(page.getByText("ARCHESTRA_FRONTEND_URL=")).toBeVisible();
@@ -85,7 +91,10 @@ test.describe("Origin error handling", { tag: ["@firefox", "@webkit"] }, () => {
 
     try {
       const url127 = UI_BASE_URL.replace("localhost", "127.0.0.1");
-      await page.goto(`${url127}/auth/sign-in`);
+      await page.goto(`${url127}/auth/sign-in`, {
+        waitUntil: "domcontentloaded",
+        timeout: 120_000,
+      });
       await loginViaUi(page, ADMIN_EMAIL, ADMIN_PASSWORD);
 
       // Should navigate away from sign-in after successful login

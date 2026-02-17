@@ -394,10 +394,10 @@ async function seedTeamTokens(): Promise<void> {
   const teams = await TeamModel.findByOrganization(org.id);
   for (const team of teams) {
     const teamToken = await TeamTokenModel.ensureTeamToken(team.id, team.name);
-  logger.info(
-    { teamId: team.id, teamName: team.name, tokenId: teamToken.id },
-    "Ensured team token exists",
-  );
+    logger.info(
+      { teamId: team.id, teamName: team.name, tokenId: teamToken.id },
+      "Ensured team token exists",
+    );
   }
 }
 

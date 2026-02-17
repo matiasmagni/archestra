@@ -185,7 +185,6 @@ const chatApiKeysRoutes: FastifyPluginAsyncZod = async (fastify) => {
             `API key not found in Vault secret at path "${body.vaultSecretPath}" with key "${body.vaultSecretKey}"`,
           );
         }
-<<<<<<< HEAD:platform/backend/src/routes/chat-api-keys.ts
 
         // NOTE: We intentionally do NOT call testProviderApiKey() here for BYOS:
         // - The key is managed externally in Vault.
@@ -193,18 +192,6 @@ const chatApiKeysRoutes: FastifyPluginAsyncZod = async (fastify) => {
         // - Hitting external providers on create makes tests and offline setups brittle.
 
         // Then create the secret record that stores the Vault reference.
-=======
-        // then test the API key
-        try {
-          await testProviderApiKey(body.provider, actualApiKeyValue);
-        } catch (_error) {
-          throw new ApiError(
-            400,
-            `Invalid API key: Failed to connect to ${capitalize(body.provider)}`,
-          );
-        }
-        // then create the secret
->>>>>>> origin/main:platform/backend/src/routes/chat/routes.api-keys.ts
         secret = await secretManager().createSecret(
           { apiKey: vaultReference },
           getChatApiKeySecretName({
@@ -409,33 +396,33 @@ const chatApiKeysRoutes: FastifyPluginAsyncZod = async (fastify) => {
             body.vaultSecretPath,
           );
           apiKeyValue = vaultData[body.vaultSecretKey];
-        if (!apiKeyValue) {
-          throw new ApiError(
-            400,
-            `API key not found in Vault secret at path "${body.vaultSecretPath}" with key "${body.vaultSecretKey}"`,
-          );
+          if (!apiKeyValue) {
+            throw new ApiError(
+              400,
+              `API key not found in Vault secret at path "${body.vaultSecretPath}" with key "${body.vaultSecretKey}"`,
+            );
+          }
+          vaultReference = `${body.vaultSecretPath}#${body.vaultSecretKey}`;
+        } else if (body.apiKey) {
+          // Use direct API key value
+          apiKeyValue = body.apiKey;
+        } else {
+          // This shouldn't happen due to refine, but TypeScript needs this
+          throw new ApiError(400, "API key or vault reference is required");
         }
-        vaultReference = `${body.vaultSecretPath}#${body.vaultSecretKey}`;
-      } else if (body.apiKey) {
-        // Use direct API key value
-        apiKeyValue = body.apiKey;
-      } else {
-        // This shouldn't happen due to refine, but TypeScript needs this
-        throw new ApiError(400, "API key or vault reference is required");
-      }
 
-      // Test the API key before saving only when we have a direct value,
-      // not when we're storing a BYOS Vault reference.
-      if (!vaultReference) {
-        try {
-          await testProviderApiKey(apiKeyFromDB.provider, apiKeyValue);
-        } catch (_error) {
-          throw new ApiError(
-            400,
-            `Invalid API key: Failed to connect to ${capitalize(apiKeyFromDB.provider)}`,
-          );
+        // Test the API key before saving only when we have a direct value,
+        // not when we're storing a BYOS Vault reference.
+        if (!vaultReference) {
+          try {
+            await testProviderApiKey(apiKeyFromDB.provider, apiKeyValue);
+          } catch (_error) {
+            throw new ApiError(
+              400,
+              `Invalid API key: Failed to connect to ${capitalize(apiKeyFromDB.provider)}`,
+            );
+          }
         }
-      }
 
         // Update or create the secret
         if (apiKeyFromDB.secretId) {

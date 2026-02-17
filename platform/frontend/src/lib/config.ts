@@ -13,15 +13,9 @@ const DEFAULT_BACKEND_URL = "http://127.0.0.1:9000";
  * Returns the configured URL or defaults to 127.0.0.1:9000 for development.
  *
  * Priority:
-<<<<<<< HEAD
- * 1. NEXT_PUBLIC_ARCHESTRA_API_BASE_URL (runtime env var for client/server)
- * 2. ARCHESTRA_API_BASE_URL (server-side only, for SSR/API routes)
- * 3. Default: http://127.0.0.1:9000
-=======
  * 1. NEXT_PUBLIC_ARCHESTRA_INTERNAL_API_BASE_URL (runtime env var for client/server)
  * 2. ARCHESTRA_INTERNAL_API_BASE_URL (server-side only, for SSR/API routes)
- * 3. Default: http://localhost:9000
->>>>>>> origin/main
+ * 3. Default: http://127.0.0.1:9000
  */
 export const getBackendBaseUrl = (): string => {
   // Try runtime env var first (works in both client and server)
@@ -105,9 +99,8 @@ export const getWebSocketUrl = (): string => {
 
   // Server-side: use absolute URL
   const backendBaseUrl = getBackendBaseUrl();
-  const wsBaseUrl = backendBaseUrl
-    ? backendBaseUrl.replace(/^http/, "ws")
-    : "ws://localhost:9000";
+  // getBackendBaseUrl() always returns a value (defaults to http://127.0.0.1:9000)
+  const wsBaseUrl = backendBaseUrl.replace(/^http/, "ws");
   return `${wsBaseUrl}/ws`;
 };
 

@@ -83,6 +83,8 @@ describe("WebSocketService", () => {
     expect(socket.sent).toHaveLength(0);
 
     socket.triggerOpen();
+    // Yield so open-handler's flushPendingMessages() completes (in case of microtasks)
+    await new Promise((r) => setTimeout(r, 0));
     expect(socket.sent).toHaveLength(1);
     expect(JSON.parse(socket.sent[0])).toEqual(testMessage);
   });

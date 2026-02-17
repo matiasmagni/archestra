@@ -30,22 +30,27 @@ export function formatDate({
   return format(new Date(date), dateFormat);
 }
 
-<<<<<<< HEAD
 /**
  * Unwrap a Node-style error `code` from nested error objects (AggregateError, cause, errors[]).
  * Used by server routes to detect network errors like ECONNREFUSED.
  */
 export function unwrapNetworkErrorCode(error: unknown): string | undefined {
   if (!error || typeof error !== "object") return undefined;
-  const anyErr = error as { code?: unknown; cause?: unknown; errors?: unknown[] };
+  const anyErr = error as {
+    code?: unknown;
+    cause?: unknown;
+    errors?: unknown[];
+  };
   if (typeof anyErr.code === "string") return anyErr.code;
   if (anyErr.cause) {
-    const cause: unknown = (anyErr.cause as { code?: unknown; errors?: unknown[] }) ?? anyErr.cause;
+    const cause: unknown =
+      (anyErr.cause as { code?: unknown; errors?: unknown[] }) ?? anyErr.cause;
     const nested =
       (cause as { code?: unknown }).code ??
       (Array.isArray((cause as { errors?: unknown[] }).errors)
         ? (cause as { errors?: unknown[] }).errors?.[0] &&
-          ((cause as { errors?: unknown[] }).errors?.[0] as { code?: unknown })?.code
+          ((cause as { errors?: unknown[] }).errors?.[0] as { code?: unknown })
+            ?.code
         : undefined);
     if (typeof nested === "string") return nested;
   }
@@ -54,7 +59,8 @@ export function unwrapNetworkErrorCode(error: unknown): string | undefined {
     if (typeof nested === "string") return nested;
   }
   return undefined;
-=======
+}
+
 export function handleApiError(error: { error: Partial<ApiError> | Error }) {
   if (typeof window !== "undefined") {
     // we show toast only on the client side
@@ -64,5 +70,4 @@ export function handleApiError(error: { error: Partial<ApiError> | Error }) {
   Sentry.captureException(error);
   // we log the error on the server side
   console.error(error);
->>>>>>> origin/main
 }

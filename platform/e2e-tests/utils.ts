@@ -543,7 +543,9 @@ export async function loginViaUi(
   email: string,
   password: string,
 ): Promise<void> {
-  await page.getByLabel(/email/i).fill(email);
+  const emailField = page.getByLabel(/email/i);
+  await emailField.waitFor({ state: "visible", timeout: 15_000 });
+  await emailField.fill(email);
   await page.getByLabel(/password/i).fill(password);
   await page.getByRole("button", { name: /sign in|login/i }).click();
 }

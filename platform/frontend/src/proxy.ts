@@ -26,12 +26,9 @@ export function proxy(req: NextRequest) {
       newHeaders.set("Origin", frontendOrigin);
 
       // Create the rewritten request with modified headers
+      // Use 127.0.0.1 to match config.ts default and avoid IPv6 issues
       const backendUrl =
-<<<<<<< HEAD
-        process.env.ARCHESTRA_API_BASE_URL || "http://127.0.0.1:9000";
-=======
-        process.env.ARCHESTRA_INTERNAL_API_BASE_URL || "http://localhost:9000";
->>>>>>> origin/main
+        process.env.ARCHESTRA_INTERNAL_API_BASE_URL || "http://127.0.0.1:9000";
       const backendRequestUrl = new URL(req.nextUrl.pathname, backendUrl);
       backendRequestUrl.search = req.nextUrl.search;
 

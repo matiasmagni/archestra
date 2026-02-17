@@ -21,9 +21,11 @@ const secretKey = "api_key";
 const secretValue = "Admin-personal-credential";
 let byosEnabled = true;
 
-test.beforeEach(async ({}, testInfo) => {
+test.beforeEach(async ({ page: _page }, testInfo) => {
   try {
-    const r = await fetch(`${vaultAddr}/v1/sys/health`, { signal: AbortSignal.timeout(3000) });
+    const r = await fetch(`${vaultAddr}/v1/sys/health`, {
+      signal: AbortSignal.timeout(3000),
+    });
     if (!r.ok) testInfo.skip(true, "Vault not ready");
   } catch {
     testInfo.skip(true, "Vault not running at localhost:8200");
@@ -102,11 +104,11 @@ test("Then we create folder in Vault for Default Team and exemplary secret", asy
   expect(readData.data.data[secretKey]).toBe(secretValue);
 });
 
-<<<<<<< HEAD
 test("Then we configure vault for Default Team", async ({
   adminPage,
   extractCookieHeaders,
 }) => {
+  test.skip(!byosEnabled, "BYOS Vault is not enabled in this environment.");
   await goToPage(adminPage, "/settings/teams");
   const cookieHeaders = await extractCookieHeaders(adminPage);
   const teamsRes = await archestraApiSdk.getTeams({
@@ -120,11 +122,6 @@ test("Then we configure vault for Default Team", async ({
     body: { vaultPath: teamFolderPath },
     headers: { Cookie: cookieHeaders },
   });
-
-=======
-test("Then we configure vault for Default Team", async ({ adminPage }) => {
-  test.skip(!byosEnabled, "BYOS Vault is not enabled in this environment.");
->>>>>>> origin/main
   await goToPage(adminPage, "/settings/teams");
   await adminPage
     .getByTestId(`${E2eTestId.ConfigureVaultFolderButton}-${DEFAULT_TEAM_NAME}`)
@@ -138,75 +135,68 @@ test("Then we configure vault for Default Team", async ({ adminPage }) => {
     timeout: 15000,
   });
 });
+["team", "personal"].forEach((scope) => {
+  test(`should create a ${scope} scoped chat API key with vault secret`, async ({
+    adminPage,
+    makeRandomString,
+  }) => {
+    test.skip(!byosEnabled, "BYOS Vault is not enabled in this environment.");
+    const keyName = makeRandomString(8, "Test Key");
 
-test.describe("Chat API Keys with Readonly Vault", () => {
-  ["team", "personal"].forEach((scope) => {
-    test(`should create a ${scope} scoped chat API key with vault secret`, async ({
-      adminPage,
-      makeRandomString,
-    }) => {
-      test.skip(!byosEnabled, "BYOS Vault is not enabled in this environment.");
-      const keyName = makeRandomString(8, "Test Key");
+    // Open Create personal chat API key form and fill in the form
+    await goToPage(adminPage, "/settings/llm-api-keys");
+    await adminPage.getByTestId(E2eTestId.AddChatApiKeyButton).click();
+    await adminPage.getByRole("textbox", { name: "Name" }).fill(keyName);
 
-      // Open Create personal chat API key form and fill in the form
-      await goToPage(adminPage, "/settings/llm-api-keys");
-      await adminPage.getByTestId(E2eTestId.AddChatApiKeyButton).click();
-      await adminPage.getByRole("textbox", { name: "Name" }).fill(keyName);
-
-      if (scope === "personal") {
-        await adminPage
-          .getByTestId("external-secret-selector-team-trigger")
-          .click();
-        await adminPage
-          .getByRole("option", { name: DEFAULT_TEAM_NAME })
-          .click();
-        await adminPage
-          .getByTestId(E2eTestId.ExternalSecretSelectorSecretTrigger)
-          .click();
-        await adminPage.getByText(secretName).click();
-        await adminPage.waitForLoadState("networkidle");
-        await adminPage
-          .getByTestId(E2eTestId.ExternalSecretSelectorSecretTriggerKey)
-          .click();
-        await adminPage.getByText(secretKey).click();
-      } else {
-        await adminPage.getByRole("combobox", { name: "Scope" }).click();
-        await adminPage.getByRole("option", { name: "Team" }).click();
-        await adminPage.getByRole("combobox", { name: "Team" }).click();
-        await adminPage.waitForLoadState("networkidle");
-        await adminPage
-          .getByRole("option", { name: DEFAULT_TEAM_NAME })
-          .click();
-        await adminPage
-          .getByTestId(E2eTestId.InlineVaultSecretSelectorSecretTrigger)
-          .click();
-        await adminPage.getByText(secretName).click();
-        await adminPage.waitForLoadState("networkidle");
-        await adminPage
-          .getByTestId(E2eTestId.InlineVaultSecretSelectorSecretTriggerKey)
-          .click();
-        await adminPage.getByText(secretKey).click();
-      }
-
-      // Click create button
-      await clickButton({
-        page: adminPage,
-        options: { name: "Test & Create" },
-      });
-
-      // Verify API key is created (row presence is the reliable signal).
-      // Allow extra time because Vault-backed creation can be slower.
-      await expect(
-        adminPage.getByTestId(`${E2eTestId.ChatApiKeyRow}-${keyName}`),
-      ).toBeVisible({ timeout: 30_000 });
-
-      // Cleanup
-      await goToPage(adminPage, "/settings/llm-api-keys");
+    if (scope === "personal") {
       await adminPage
-        .getByTestId(`${E2eTestId.DeleteChatApiKeyButton}-${keyName}`)
+        .getByTestId("external-secret-selector-team-trigger")
         .click();
-      await clickButton({ page: adminPage, options: { name: "Delete" } });
+      await adminPage.getByRole("option", { name: DEFAULT_TEAM_NAME }).click();
+      await adminPage
+        .getByTestId(E2eTestId.ExternalSecretSelectorSecretTrigger)
+        .click();
+      await adminPage.getByText(secretName).click();
+      await adminPage.waitForLoadState("networkidle");
+      await adminPage
+        .getByTestId(E2eTestId.ExternalSecretSelectorSecretTriggerKey)
+        .click();
+      await adminPage.getByText(secretKey).click();
+    } else {
+      await adminPage.getByRole("combobox", { name: "Scope" }).click();
+      await adminPage.getByRole("option", { name: "Team" }).click();
+      await adminPage.getByRole("combobox", { name: "Team" }).click();
+      await adminPage.waitForLoadState("networkidle");
+      await adminPage.getByRole("option", { name: DEFAULT_TEAM_NAME }).click();
+      await adminPage
+        .getByTestId(E2eTestId.InlineVaultSecretSelectorSecretTrigger)
+        .click();
+      await adminPage.getByText(secretName).click();
+      await adminPage.waitForLoadState("networkidle");
+      await adminPage
+        .getByTestId(E2eTestId.InlineVaultSecretSelectorSecretTriggerKey)
+        .click();
+      await adminPage.getByText(secretKey).click();
+    }
+
+    // Click create button
+    await clickButton({
+      page: adminPage,
+      options: { name: "Test & Create" },
     });
+
+    // Verify API key is created (row presence is the reliable signal).
+    // Allow extra time because Vault-backed creation can be slower.
+    await expect(
+      adminPage.getByTestId(`${E2eTestId.ChatApiKeyRow}-${keyName}`),
+    ).toBeVisible({ timeout: 30_000 });
+
+    // Cleanup
+    await goToPage(adminPage, "/settings/llm-api-keys");
+    await adminPage
+      .getByTestId(`${E2eTestId.DeleteChatApiKeyButton}-${keyName}`)
+      .click();
+    await clickButton({ page: adminPage, options: { name: "Delete" } });
   });
 });
 
@@ -215,12 +205,8 @@ test.describe("Test self-hosted MCP server with Readonly Vault", () => {
     adminPage,
     extractCookieHeaders,
     makeRandomString,
-<<<<<<< HEAD
   }, testInfo) => {
-=======
-  }) => {
     test.skip(!byosEnabled, "BYOS Vault is not enabled in this environment.");
->>>>>>> origin/main
     test.setTimeout(90_000);
     const cookieHeaders = await extractCookieHeaders(adminPage);
 
@@ -229,7 +215,10 @@ test.describe("Test self-hosted MCP server with Readonly Vault", () => {
       headers: { Cookie: cookieHeaders },
     });
     if (!features.data?.["orchestrator-k8s-runtime"]) {
-      testInfo.skip("orchestrator-k8s-runtime feature disabled; skipping local MCP tests");
+      testInfo.skip(
+        true,
+        "orchestrator-k8s-runtime feature disabled; skipping local MCP tests",
+      );
     }
     const catalogItemName = makeRandomString(10, "mcp");
     const newCatalogItem = await addCustomSelfHostedCatalogItem({
@@ -313,12 +302,8 @@ test.describe("Test self-hosted MCP server with Readonly Vault", () => {
     adminPage,
     extractCookieHeaders,
     makeRandomString,
-<<<<<<< HEAD
   }, testInfo) => {
-=======
-  }) => {
     test.skip(!byosEnabled, "BYOS Vault is not enabled in this environment.");
->>>>>>> origin/main
     const cookieHeaders = await extractCookieHeaders(adminPage);
 
     // Skip when K8s orchestrator runtime is not enabled (no local MCP support).
@@ -326,7 +311,10 @@ test.describe("Test self-hosted MCP server with Readonly Vault", () => {
       headers: { Cookie: cookieHeaders },
     });
     if (!features.data?.["orchestrator-k8s-runtime"]) {
-      testInfo.skip("orchestrator-k8s-runtime feature disabled; skipping local MCP tests");
+      testInfo.skip(
+        true,
+        "orchestrator-k8s-runtime feature disabled; skipping local MCP tests",
+      );
     }
     const catalogItemName = makeRandomString(10, "mcp");
 

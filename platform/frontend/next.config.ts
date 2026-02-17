@@ -27,11 +27,7 @@ const nextConfig: NextConfig = {
   },
   async rewrites() {
     const backendUrl =
-<<<<<<< HEAD
-      process.env.ARCHESTRA_API_BASE_URL || "http://127.0.0.1:9000";
-=======
       process.env.ARCHESTRA_INTERNAL_API_BASE_URL || "http://localhost:9000";
->>>>>>> origin/main
     return [
       {
         source: "/api/archestra-catalog/:path*",
@@ -45,13 +41,6 @@ const nextConfig: NextConfig = {
         destination: `${backendUrl}/api/:path*`,
       },
       {
-        source: "/v1/:path*",
-        destination: `${backendUrl}/v1/:path*`,
-      },
-<<<<<<< HEAD
-      // /health is handled by app/health/route.ts so we can return 503 when backend is down
-=======
-      {
         source: "/health",
         destination: `${backendUrl}/health`,
       },
@@ -59,7 +48,10 @@ const nextConfig: NextConfig = {
         source: "/ws",
         destination: `${backendUrl}/ws`,
       },
->>>>>>> origin/main
+      {
+        source: "/v1/:path*",
+        destination: `${backendUrl}/v1/:path*`,
+      },
     ];
   },
 };

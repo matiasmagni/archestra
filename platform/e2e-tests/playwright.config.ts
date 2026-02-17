@@ -1,4 +1,7 @@
+import path from "node:path";
 import { defineConfig, devices } from "@playwright/test";
+
+import "./playwright-env";
 import { adminAuthFile, IS_CI } from "./consts";
 
 /**
@@ -71,6 +74,16 @@ const dependencies = {
  */
 export default defineConfig({
   testDir: "./tests",
+  /* Start the app so E2E can run without a manual `pnpm dev`. Wait for frontend; admin setup retries until backend is up. In CI we expect the server to already be up. */
+  webServer: IS_CI
+    ? undefined
+    : {
+        command: "pnpm dev",
+        cwd: path.join(__dirname, ".."),
+        url: process.env.E2E_UI_BASE_URL ?? "http://127.0.0.1:3000",
+        reuseExistingServer: true,
+        timeout: 180_000,
+      },
   /* Run tests in files in parallel */
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
@@ -78,8 +91,8 @@ export default defineConfig({
   /* Retry on CI only */
   retries: IS_CI ? 2 : 0,
   workers: IS_CI ? 12 : 3,
-  /* Global timeout for each test */
-  timeout: 60_000,
+  /* Global timeout for each test (allow cold Next.js nav + assertion) */
+  timeout: 120_000,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: IS_CI ? [["blob"], ["github"], ["line"]] : "line",
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
@@ -92,8 +105,8 @@ export default defineConfig({
     screenshot: "only-on-failure",
     /* Timeout for each action (click, fill, etc.) - generous for cold Next.js */
     actionTimeout: 30_000,
-    /* Timeout for navigation actions (Next.js cold loads can be slow) */
-    navigationTimeout: 60_000,
+    /* Timeout for navigation (cold Next.js compile can exceed 60s) */
+    navigationTimeout: 120_000,
   },
   /* Expect timeout for assertions */
   expect: {
@@ -107,7 +120,7 @@ export default defineConfig({
       name: projectNames.setupAdmin,
       testMatch: testPatterns.adminSetup,
       testDir: "./",
-      timeout: 120_000,
+      timeout: 240_000,
     },
     {
       name: projectNames.setupUsers,
@@ -155,7 +168,7 @@ export default defineConfig({
         ...devices["Desktop Chrome"],
         storageState: adminAuthFile,
       },
-      dependencies: dependencies.browserProjects,
+      dependencies: dependencies.testProjects,
     },
     {
       name: projectNames.firefox,

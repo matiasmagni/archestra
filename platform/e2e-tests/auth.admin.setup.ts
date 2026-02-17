@@ -8,23 +8,53 @@ import {
 } from "./consts";
 import { loginViaApi } from "./utils";
 
+/** Poll frontend readiness (which checks backend /health) so we don't hit 500 on first login. */
+async function waitForAppReady(
+  page: {
+    request: { get: (url: string) => Promise<{ status: () => number }> };
+  },
+  timeoutMs: number,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  const pollMs = 3000;
+  while (Date.now() < deadline) {
+    try {
+      const res = await page.request.get(`${UI_BASE_URL}/api/e2e-ready`);
+      if (res.status() === 200) return;
+    } catch {
+      // ignore
+    }
+    await new Promise((r) => setTimeout(r, pollMs));
+  }
+}
+
 // Setup admin authentication - must run first before other users
 setup("authenticate as admin", async ({ page }) => {
-  // Sign in admin via API
-  const signedIn = await loginViaApi(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+  // Wait for backend to be up (frontend is already up from webServer)
+  await waitForAppReady(page, 120_000);
+
+  // Sign in admin via API; retry so auth has time to settle
+  const maxAttempts = 6;
+  const delayMs = 5000;
+  let signedIn = false;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    signedIn = await loginViaApi(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    if (signedIn) break;
+    if (attempt < maxAttempts) {
+      await page.waitForTimeout(delayMs);
+    }
+  }
   expect(
     signedIn,
-    "Admin sign-in failed. Check test output for [loginViaApi] status/body. Ensure DB is running, backend seeded the default admin (admin@example.com), and ARCHESTRA_AUTH_* env (if set) match e2e-tests/consts.",
+    "Admin sign-in failed (sign-in returned 500 = backend not ready or DB missing). Start the app first: run 'pnpm dev' in one terminal (with PostgreSQL up and pnpm db:migrate), then run 'pnpm test:e2e' in another. Ensure default admin is seeded (admin@example.com) and ARCHESTRA_AUTH_* env (if set) match e2e-tests/consts.",
   ).toBe(true);
 
-<<<<<<< HEAD
-  // Navigate to trigger cookie storage (allow 60s for cold Next.js /chat)
-  await page.goto(`${UI_BASE_URL}/chat`, { timeout: 60_000 });
-  await page.waitForLoadState("networkidle");
-=======
-  // Navigate to trigger cookie storage
-  await page.goto(`${UI_BASE_URL}/chat`, { waitUntil: "domcontentloaded" });
->>>>>>> origin/main
+  // Navigate to trigger cookie storage (domcontentloaded for cold Next.js)
+  await page.goto(`${UI_BASE_URL}/chat`, {
+    waitUntil: "domcontentloaded",
+    timeout: 120_000,
+  });
+  await page.waitForLoadState("domcontentloaded");
 
   // Mark onboarding as complete and set restrictive policy via API
   // Setting globalToolPolicy to "restrictive" prevents the permissive policy overlay from blocking UI interactions

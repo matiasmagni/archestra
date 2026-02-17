@@ -33,7 +33,8 @@ export function McpAppFrame({
 
     fetch(url, { credentials: "include" })
       .then((res) => {
-        if (!res.ok) throw new Error(res.statusText || "Failed to load MCP App");
+        if (!res.ok)
+          throw new Error(res.statusText || "Failed to load MCP App");
         return res.text();
       })
       .then((text) => {
@@ -95,11 +96,7 @@ export function McpAppFrame({
 
   if (loading) {
     return (
-      <div
-        className={className}
-        style={{ minHeight: 200 }}
-        aria-busy
-      >
+      <div className={className} style={{ minHeight: 200 }} aria-busy>
         <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
           Loading app…
         </div>
@@ -109,10 +106,7 @@ export function McpAppFrame({
 
   if (error || !html) {
     return (
-      <div
-        className={className}
-        style={{ minHeight: 120 }}
-      >
+      <div className={className} style={{ minHeight: 120 }}>
         <div className="rounded-md bg-destructive/10 text-destructive text-sm p-3">
           {error ?? "No content"}
         </div>
@@ -129,7 +123,11 @@ export function McpAppFrame({
       // HTML (fetched from remote MCP servers) from accessing parent DOM, cookies, or storage.
       sandbox="allow-scripts"
       className={className}
-      style={{ minHeight: 280, width: "100%", border: "1px solid var(--border)" }}
+      style={{
+        minHeight: 280,
+        width: "100%",
+        border: "1px solid var(--border)",
+      }}
     />
   );
 }

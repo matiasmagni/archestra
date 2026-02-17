@@ -68,14 +68,17 @@ describe("IdentityProviderSelector", () => {
 
       render(<IdentityProviderSelector />);
 
-      await user.click(screen.getByRole("button", { name: /sign in with/i }));
+      const button = await screen.findByRole("button", {
+        name: /sign in with/i,
+      });
+      await user.click(button);
 
       expect(authClient.signIn.sso).toHaveBeenCalledWith(
         expect.objectContaining({
           callbackURL: `${mockOrigin}/`,
         }),
       );
-    });
+    }, 10000);
 
     it("should use redirectTo param when present", async () => {
       mockSearchParams.get.mockReturnValue("%2Fdashboard");

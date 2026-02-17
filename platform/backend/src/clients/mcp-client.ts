@@ -1516,7 +1516,14 @@ class McpClient {
     mcpServerId: string;
     secrets: Record<string, unknown>;
     uri: string;
-  }): Promise<{ contents: Array<{ uri: string; mimeType?: string; text?: string; blob?: string }> }> {
+  }): Promise<{
+    contents: Array<{
+      uri: string;
+      mimeType?: string;
+      text?: string;
+      blob?: string;
+    }>;
+  }> {
     const { catalogItem, mcpServerId, secrets, uri } = params;
 
     const transport = await this.getTransport(
@@ -1537,18 +1544,36 @@ class McpClient {
 
     try {
       // MCP SDK Client.readResource(params: { uri: string }) for resources/read (e.g. MCP Apps ui://)
-      const readResource = (client as {
-        readResource?: (params: { uri: string }) => Promise<{ contents: Array<{ uri: string; mimeType?: string; text?: string; blob?: string }> }>;
-      }).readResource;
+      const readResource = (
+        client as {
+          readResource?: (params: { uri: string }) => Promise<{
+            contents: Array<{
+              uri: string;
+              mimeType?: string;
+              text?: string;
+              blob?: string;
+            }>;
+          }>;
+        }
+      ).readResource;
       if (!readResource || typeof readResource !== "function") {
         await client.close();
-        throw new Error("MCP server does not support reading resources (resources/read)");
+        throw new Error(
+          "MCP server does not support reading resources (resources/read)",
+        );
       }
       const result = await Promise.race([
         readResource.call(client, { uri }),
         this.createTimeout(15000, "Read resource timeout"),
       ]);
-      return result as { contents: Array<{ uri: string; mimeType?: string; text?: string; blob?: string }> };
+      return result as {
+        contents: Array<{
+          uri: string;
+          mimeType?: string;
+          text?: string;
+          blob?: string;
+        }>;
+      };
     } finally {
       await client.close();
     }

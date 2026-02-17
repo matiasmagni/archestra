@@ -18,6 +18,7 @@ import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { hasPermission } from "@/auth";
 import { getChatMcpTools } from "@/clients/chat-mcp-client";
+import { isVertexAiEnabled } from "@/clients/gemini-client";
 import mcpClient from "@/clients/mcp-client";
 import config from "@/config";
 import logger from "@/logging";
@@ -29,16 +30,14 @@ import {
   InternalMcpCatalogModel,
   McpServerModel,
   MessageModel,
-  PromptModel,
   TeamModel,
   ToolModel,
 } from "@/models";
 import { getExternalAgentId } from "@/routes/proxy/utils/external-agent-id";
-import { isVertexAiEnabled } from "@/routes/proxy/utils/gemini-client";
 import {
   getSecretValueForLlmProviderApiKey,
   secretManager,
-} from "@/secretsmanager";
+} from "@/secrets-manager";
 import type { SupportedChatProvider } from "@/types";
 import {
   ApiError,
@@ -181,10 +180,10 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
         throw new ApiError(404, "Conversation not found");
       }
 
-      // Fetch enabled tool IDs, MCP tools, and agent prompts in parallel
-      const [enabledToolIds, prompt] = await Promise.all([
+      // Fetch enabled tool IDs and MCP tools in parallel
+      // Note: Prompts are now stored directly on agents, not as separate entities
+      const [enabledToolIds] = await Promise.all([
         ConversationEnabledToolModel.findByConversation(conversationId),
-        PromptModel.findById(conversation.promptId),
       ]);
 
       // Fetch MCP tools with enabled tool filtering
@@ -192,21 +191,22 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
         agentName: conversation.agent.name,
         agentId: conversation.agentId,
         userId: user.id,
+        organizationId: organizationId,
         userIsProfileAdmin,
         enabledToolIds,
       });
 
-      // Build system prompt from prompts' systemPrompt and userPrompt fields
+      // Build system prompt from agent's systemPrompt and userPrompt fields
       let systemPrompt: string | undefined;
       const systemPromptParts: string[] = [];
       const userPromptParts: string[] = [];
 
-      // Collect system and user prompts from all assigned prompts
-      if (prompt?.systemPrompt) {
-        systemPromptParts.push(prompt.systemPrompt);
+      // Collect system and user prompts from agent
+      if (conversation.agent.systemPrompt) {
+        systemPromptParts.push(conversation.agent.systemPrompt);
       }
-      if (prompt?.userPrompt) {
-        userPromptParts.push(prompt.userPrompt);
+      if (conversation.agent.userPrompt) {
+        userPromptParts.push(conversation.agent.userPrompt);
       }
 
       // Combine all prompts into system prompt (system prompts first, then user prompts)
@@ -227,7 +227,6 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
           toolCount: Object.keys(mcpTools).length,
           model: conversation.selectedModel,
           provider,
-          promptId: prompt?.id,
           hasSystemPromptParts: systemPromptParts.length > 0,
           hasUserPromptParts: userPromptParts.length > 0,
           systemPromptProvided: !!systemPrompt,
@@ -344,7 +343,7 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
       // Build streamText config conditionally
       const streamTextConfig: Parameters<typeof streamText>[0] = {
         model: llmClient(conversation.selectedModel),
-        messages: convertToModelMessages(messages),
+        messages: await convertToModelMessages(messages),
         tools: mcpTools,
         stopWhen: stepCountIs(20),
         onFinish: async ({ usage, finishReason }) => {
@@ -525,12 +524,13 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
     },
   );
 
-      fastify.get(
+  fastify.get(
     "/api/chat/agents/:agentId/mcp-tools",
     {
       schema: {
         operationId: RouteId.GetChatAgentMcpTools,
-        description: "Get MCP tools available for an agent (includes _meta for MCP Apps)",
+        description:
+          "Get MCP tools available for an agent (includes _meta for MCP Apps)",
         tags: ["Chat"],
         params: z.object({ agentId: UuidIdSchema }),
         response: constructResponseSchema(
@@ -577,7 +577,8 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
     "/api/chat/agents/:agentId/mcp-app-resource",
     {
       schema: {
-        description: "Fetch MCP App UI resource (e.g. ui://) for rendering in chat",
+        description:
+          "Fetch MCP App UI resource (e.g. ui://) for rendering in chat",
         tags: ["Chat"],
         params: z.object({ agentId: UuidIdSchema }),
         querystring: z.object({ uri: z.string().min(1) }),
@@ -617,7 +618,9 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
 
       let secrets: Record<string, unknown> = {};
       if (mcpServer.secretId) {
-        const secretRecord = await secretManager().getSecret(mcpServer.secretId);
+        const secretRecord = await secretManager().getSecret(
+          mcpServer.secretId,
+        );
         if (secretRecord?.secret) {
           secrets = secretRecord.secret;
         }
@@ -656,14 +659,12 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
         tags: ["Chat"],
         body: InsertConversationSchema.pick({
           agentId: true,
-          promptId: true,
           title: true,
           selectedModel: true,
           chatApiKeyId: true,
         })
           .required({ agentId: true })
           .partial({
-            promptId: true,
             title: true,
             selectedModel: true,
             chatApiKeyId: true,
@@ -673,7 +674,7 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
     },
     async (
       {
-        body: { agentId, promptId, title, selectedModel, chatApiKeyId },
+        body: { agentId, title, selectedModel, chatApiKeyId },
         user,
         organizationId,
         headers,
@@ -714,13 +715,12 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
         "Creating conversation with model",
       );
 
-      // Create conversation with agent and optional prompt
+      // Create conversation with agent
       return reply.send(
         await ConversationModel.create({
           userId: user.id,
           organizationId,
           agentId,
-          promptId,
           title,
           selectedModel: modelToUse,
           chatApiKeyId,

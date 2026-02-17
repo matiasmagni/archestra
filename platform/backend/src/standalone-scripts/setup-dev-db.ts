@@ -1,4 +1,5 @@
 #!/usr/bin/env tsx
+
 /**
  * Setup development database: creates user and database if they don't exist.
  * This script connects as a superuser (postgres) to create the dev user/db.
@@ -9,10 +10,10 @@
  *   SUPERUSER=myuser SUPERUSER_PASSWORD=mypass tsx src/standalone-scripts/setup-dev-db.ts
  */
 
-import pg from "pg";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { config } from "dotenv";
-import { resolve, dirname } from "path";
-import { fileURLToPath } from "url";
+import pg from "pg";
 
 // Load .env from platform root
 const __filename = fileURLToPath(import.meta.url);
@@ -28,13 +29,19 @@ const DB_PORT = parseInt(process.env.ARCHESTRA_DATABASE_PORT || "5432", 10);
 // Superuser credentials (try common defaults)
 const SUPERUSER = process.env.SUPERUSER || "postgres";
 const SUPERUSER_PASSWORD =
-  process.env.SUPERUSER_PASSWORD || process.env.POSTGRES_PASSWORD || process.env.PGPASSWORD || "";
+  process.env.SUPERUSER_PASSWORD ||
+  process.env.POSTGRES_PASSWORD ||
+  process.env.PGPASSWORD ||
+  "";
 
-async function tryConnect(client: pg.Client, description: string): Promise<boolean> {
+async function tryConnect(
+  client: pg.Client,
+  _description: string,
+): Promise<boolean> {
   try {
     await client.connect();
     return true;
-  } catch (err) {
+  } catch (_err) {
     await client.end().catch(() => {});
     return false;
   }
@@ -49,13 +56,17 @@ async function setupDatabase() {
   // Try different connection methods
   const connectionAttempts = [
     // Try with password if provided
-    ...(SUPERUSER_PASSWORD ? [{
-      host: DB_HOST,
-      port: DB_PORT,
-      user: SUPERUSER,
-      password: SUPERUSER_PASSWORD,
-      database: "postgres",
-    }] : []),
+    ...(SUPERUSER_PASSWORD
+      ? [
+          {
+            host: DB_HOST,
+            port: DB_PORT,
+            user: SUPERUSER,
+            password: SUPERUSER_PASSWORD,
+            database: "postgres",
+          },
+        ]
+      : []),
     // Try without password (trust/local auth)
     {
       host: DB_HOST,
@@ -77,7 +88,9 @@ async function setupDatabase() {
 
   for (const config of connectionAttempts) {
     const client = new pg.Client(config);
-    console.log(`\nTrying to connect as: ${config.user}${config.password ? " (with password)" : ""}...`);
+    console.log(
+      `\nTrying to connect as: ${config.user}${config.password ? " (with password)" : ""}...`,
+    );
     if (await tryConnect(client, `${config.user}`)) {
       superuserClient = client;
       connected = true;
@@ -93,8 +106,12 @@ async function setupDatabase() {
     console.error("2. Set SUPERUSER_PASSWORD environment variable:");
     console.error("   $env:SUPERUSER_PASSWORD='yourpassword'; pnpm db:setup");
     console.error("3. Or create the user manually:");
-    console.error(`   psql -U postgres -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';"`);
-    console.error(`   psql -U postgres -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};"`);
+    console.error(
+      `   psql -U postgres -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';"`,
+    );
+    console.error(
+      `   psql -U postgres -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};"`,
+    );
     process.exit(1);
   }
 
@@ -153,7 +170,9 @@ async function setupDatabase() {
       await userClient.connect();
       const versionResult = await userClient.query("SELECT version()");
       console.log("Connection verified!");
-      console.log(`PostgreSQL version: ${versionResult.rows[0].version.split("\n")[0]}`);
+      console.log(
+        `PostgreSQL version: ${versionResult.rows[0].version.split("\n")[0]}`,
+      );
       await userClient.end();
     } catch (err) {
       console.error("WARNING: Could not verify connection as new user:", err);
@@ -161,7 +180,9 @@ async function setupDatabase() {
     }
 
     console.log("\n=== Database setup completed successfully! ===");
-    console.log(`Connection string: postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}?schema=public`);
+    console.log(
+      `Connection string: postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}?schema=public`,
+    );
     console.log("\nNext steps:");
     console.log("1. Run migrations: cd backend && pnpm db:migrate");
     console.log("2. Start the app: cd platform && pnpm dev");
@@ -170,14 +191,23 @@ async function setupDatabase() {
     console.error("\nERROR: Database setup failed:");
     if (err instanceof Error) {
       console.error(err.message);
-      if (err.message.includes("password authentication failed") || err.message.includes("SASL")) {
+      if (
+        err.message.includes("password authentication failed") ||
+        err.message.includes("SASL")
+      ) {
         console.error("\nTroubleshooting:");
         console.error("1. Ensure Postgres is running");
         console.error("2. Set SUPERUSER_PASSWORD environment variable:");
-        console.error("   $env:SUPERUSER_PASSWORD='yourpassword'; pnpm db:setup");
+        console.error(
+          "   $env:SUPERUSER_PASSWORD='yourpassword'; pnpm db:setup",
+        );
         console.error("3. Or create the user manually:");
-        console.error(`   psql -U postgres -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';"`);
-        console.error(`   psql -U postgres -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};"`);
+        console.error(
+          `   psql -U postgres -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';"`,
+        );
+        console.error(
+          `   psql -U postgres -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};"`,
+        );
       }
     } else {
       console.error(err);

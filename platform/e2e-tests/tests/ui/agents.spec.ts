@@ -17,7 +17,7 @@ test(
     const AGENT_NAME = makeRandomString(10, "Test Agent");
     await goToPage(page, "/agents");
 
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
 
     const createButton = page.getByTestId(E2eTestId.CreateAgentButton);
     let createAttempts = 0;
@@ -25,14 +25,14 @@ test(
       createAttempts++;
       if (createAttempts > 1) {
         await page.reload();
-        await page.waitForLoadState("networkidle");
+        await page.waitForLoadState("domcontentloaded");
       }
       await expect(createButton).toBeVisible({ timeout: 5000 });
       await expect(createButton).toBeEnabled({ timeout: 5000 });
     }).toPass({ timeout: 90_000, intervals: [2000, 5000, 10000] });
     await createButton.click();
     await page.getByRole("textbox", { name: "Name" }).fill(AGENT_NAME);
-    await page.getByRole("button", { name: "Create" }).click();
+    await page.getByRole("button", { name: "Create", exact: true }).click();
 
     // After agent creation, wait for the connect dialog to appear
     await expect(
@@ -44,7 +44,7 @@ test(
 
     // Ensure dialog is closed
     await expect(page.getByRole("dialog")).not.toBeVisible({ timeout: 10000 });
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
 
     // Poll for the agent to appear in the table
     const agentLocator = page
@@ -53,7 +53,7 @@ test(
 
     await expect(async () => {
       await page.reload();
-      await page.waitForLoadState("networkidle");
+      await page.waitForLoadState("domcontentloaded");
       await expect(agentLocator).toBeVisible({ timeout: 5000 });
     }).toPass({ timeout: 30_000, intervals: [2000, 3000, 5000] });
 
@@ -83,7 +83,7 @@ test(
     const PROXY_NAME = makeRandomString(10, "Test LLM Proxy");
     await goToPage(page, "/llm-proxies");
 
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
 
     const createButton = page.getByTestId(E2eTestId.CreateAgentButton);
     let createAttempts = 0;
@@ -91,14 +91,14 @@ test(
       createAttempts++;
       if (createAttempts > 1) {
         await page.reload();
-        await page.waitForLoadState("networkidle");
+        await page.waitForLoadState("domcontentloaded");
       }
       await expect(createButton).toBeVisible({ timeout: 5000 });
       await expect(createButton).toBeEnabled({ timeout: 5000 });
     }).toPass({ timeout: 90_000, intervals: [2000, 5000, 10000] });
     await createButton.click();
     await page.getByRole("textbox", { name: "Name" }).fill(PROXY_NAME);
-    await page.getByRole("button", { name: "Create" }).click();
+    await page.getByRole("button", { name: "Create", exact: true }).click();
 
     // After LLM proxy creation, wait for the connect dialog to appear
     await expect(
@@ -110,7 +110,7 @@ test(
 
     // Ensure dialog is closed
     await expect(page.getByRole("dialog")).not.toBeVisible({ timeout: 10000 });
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
 
     // Poll for the LLM proxy to appear in the table
     const proxyLocator = page
@@ -119,7 +119,7 @@ test(
 
     await expect(async () => {
       await page.reload();
-      await page.waitForLoadState("networkidle");
+      await page.waitForLoadState("domcontentloaded");
       await expect(proxyLocator).toBeVisible({ timeout: 5000 });
     }).toPass({ timeout: 30_000, intervals: [2000, 3000, 5000] });
 
@@ -149,7 +149,7 @@ test(
     const GATEWAY_NAME = makeRandomString(10, "Test MCP Gateway");
     await goToPage(page, "/mcp-gateways");
 
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
 
     const createButton = page.getByTestId(E2eTestId.CreateAgentButton);
     let createAttempts = 0;
@@ -157,14 +157,14 @@ test(
       createAttempts++;
       if (createAttempts > 1) {
         await page.reload();
-        await page.waitForLoadState("networkidle");
+        await page.waitForLoadState("domcontentloaded");
       }
       await expect(createButton).toBeVisible({ timeout: 5000 });
       await expect(createButton).toBeEnabled({ timeout: 5000 });
     }).toPass({ timeout: 90_000, intervals: [2000, 5000, 10000] });
     await createButton.click();
     await page.getByRole("textbox", { name: "Name" }).fill(GATEWAY_NAME);
-    await page.getByRole("button", { name: "Create" }).click();
+    await page.getByRole("button", { name: "Create", exact: true }).click();
 
     // After MCP gateway creation, wait for the connect dialog to appear
     await expect(
@@ -176,7 +176,7 @@ test(
 
     // Ensure dialog is closed
     await expect(page.getByRole("dialog")).not.toBeVisible({ timeout: 10000 });
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
 
     // Poll for the MCP gateway to appear in the table
     const gatewayLocator = page
@@ -185,7 +185,7 @@ test(
 
     await expect(async () => {
       await page.reload();
-      await page.waitForLoadState("networkidle");
+      await page.waitForLoadState("domcontentloaded");
       await expect(gatewayLocator).toBeVisible({ timeout: 5000 });
     }).toPass({ timeout: 30_000, intervals: [2000, 3000, 5000] });
 

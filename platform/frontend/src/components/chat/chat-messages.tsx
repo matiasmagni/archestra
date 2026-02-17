@@ -41,20 +41,13 @@ import { extractFileAttachments, hasTextPart } from "./chat-messages.utils";
 import { EditableAssistantMessage } from "./editable-assistant-message";
 import { EditableUserMessage } from "./editable-user-message";
 import { InlineChatError } from "./inline-chat-error";
-<<<<<<< HEAD
 import { McpAppFrame } from "./mcp-app-frame";
-
-interface ChatMessagesProps {
-  conversationId: string | undefined;
-  /** Profile (agent) ID for the conversation; used for MCP App resource loading */
-=======
 import { PolicyDeniedTool } from "./policy-denied-tool";
 import { TodoWriteTool } from "./todo-write-tool";
 import { ToolErrorLogsButton } from "./tool-error-logs-button";
 
 interface ChatMessagesProps {
   conversationId: string | undefined;
->>>>>>> origin/main
   agentId?: string;
   messages: UIMessage[];
   status: ChatStatus;
@@ -97,12 +90,9 @@ function isToolPart(part: any): part is {
 export function ChatMessages({
   conversationId,
   agentId,
-<<<<<<< HEAD
-=======
   agentName,
   suggestedPrompt,
   onSuggestedPromptClick,
->>>>>>> origin/main
   messages,
   status,
   isLoadingConversation = false,
@@ -114,8 +104,14 @@ export function ChatMessages({
   const { data: profileTools = [] } = useChatProfileMcpTools(agentId);
   const toolMetaByName = Object.fromEntries(
     profileTools
-      .filter((t): t is typeof t & { _meta?: { ui?: { resourceUri?: string } } } => Boolean((t as { _meta?: unknown })._meta))
-      .map((t) => [t.name, (t as { _meta?: { ui?: { resourceUri?: string } } })._meta]),
+      .filter(
+        (t): t is typeof t & { _meta?: { ui?: { resourceUri?: string } } } =>
+          Boolean((t as { _meta?: unknown })._meta),
+      )
+      .map((t) => [
+        t.name,
+        (t as { _meta?: { ui?: { resourceUri?: string } } })._meta,
+      ]),
   );
   const isStreamingStalled = useStreamingStallDetection(messages, status);
   // Track editing by messageId-partIndex to support multiple text parts per message
@@ -772,17 +768,14 @@ export function ChatMessages({
                         toolResultPart = nextPart;
                       }
 
-                        return (
+                      return (
                         <MessageTool
                           part={part}
                           key={`${message.id}-${i}`}
                           toolResultPart={toolResultPart}
                           toolName={toolName}
                           agentId={agentId}
-<<<<<<< HEAD
                           toolMeta={toolMetaByName[toolName]}
-=======
->>>>>>> origin/main
                         />
                       );
                     }
@@ -813,10 +806,7 @@ export function ChatMessages({
                             toolResultPart={toolResultPart}
                             toolName={toolName}
                             agentId={agentId}
-<<<<<<< HEAD
                             toolMeta={toolMetaByName[toolName]}
-=======
->>>>>>> origin/main
                           />
                         );
                       }
@@ -894,19 +884,13 @@ function MessageTool({
   toolResultPart,
   toolName,
   agentId,
-<<<<<<< HEAD
   toolMeta,
-=======
->>>>>>> origin/main
 }: {
   part: ToolUIPart | DynamicToolUIPart;
   toolResultPart: ToolUIPart | DynamicToolUIPart | null;
   toolName: string;
   agentId?: string;
-<<<<<<< HEAD
   toolMeta?: { ui?: { resourceUri?: string } };
-=======
->>>>>>> origin/main
 }) {
   const outputError = toolResultPart
     ? tryToExtractErrorFromOutput(toolResultPart.output)
@@ -953,26 +937,25 @@ function MessageTool({
   }
 
   const hasInput = part.input && Object.keys(part.input).length > 0;
-  const effectiveResultPart = toolResultPart ?? (part.state === "output-available" ? part : null);
+  const effectiveResultPart =
+    toolResultPart ?? (part.state === "output-available" ? part : null);
   const hasContent = Boolean(
     hasInput ||
       (toolResultPart && Boolean(toolResultPart.output)) ||
       (!toolResultPart && Boolean(part.output)),
   );
 
-<<<<<<< HEAD
   const resourceUri = toolMeta?.ui?.resourceUri;
   const showMcpApp =
     Boolean(agentId) &&
     Boolean(resourceUri) &&
     Boolean(effectiveResultPart) &&
     !errorText;
-=======
+
   // Show logs button for failed tool calls
   const logsButton = errorText ? (
     <ToolErrorLogsButton toolName={toolName} />
   ) : null;
->>>>>>> origin/main
 
   return (
     <Tool className={hasContent ? "cursor-pointer" : ""}>

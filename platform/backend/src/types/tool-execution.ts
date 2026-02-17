@@ -1,40 +1,4 @@
-import { z } from "zod";
-
-export const CommonToolCallSchema = z
-  .object({
-    id: z.string(),
-    name: z.string(),
-    arguments: z.record(z.string(), z.unknown()),
-  })
-  .describe("Represents a tool call in a provider-agnostic way");
-
-/** MCP App UI metadata (see https://modelcontextprotocol.io/docs/extensions/apps) */
-export type McpToolMetaUi = {
-  resourceUri?: string; // e.g. "ui://get-time/mcp-app.html"
-  permissions?: string[];
-  csp?: string;
-};
-
-export type CommonMcpToolDefinition = {
-  name: string;
-  description?: string;
-  inputSchema: Record<string, unknown>;
-  /** MCP tool metadata (e.g. _meta.ui for MCP Apps) */
-  meta?: { ui?: McpToolMetaUi } & Record<string, unknown>;
-};
-
-/**
- * Provider-agnostic representation of a tool call from an LLM
- */
-export type CommonToolCall = z.infer<typeof CommonToolCallSchema>;
-
-/**
- * Provider-agnostic representation of a tool execution result
- */
-export type CommonToolResult = {
-  id: string;
-  name: string;
-  content: unknown;
-  isError: boolean;
-  error?: string;
-};
+// Deprecated: this file has been replaced by common-llm-format.ts
+// Kept only to avoid import errors on older branches; new code should import
+// CommonToolCall, CommonToolResult, CommonMcpToolDefinition from
+// "@/types/common-llm-format".

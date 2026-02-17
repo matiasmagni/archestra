@@ -6,6 +6,16 @@ import { TeamTokenModel, UserTokenModel } from "@/models";
 import type { JwksValidationResult } from "@/services/jwks-validator";
 import { describe, expect, test } from "@/test";
 
+// Silence expected "invalid token" warnings during tests (we intentionally test rejection paths)
+vi.mock("@/logging", () => ({
+  default: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
 vi.mock("@/config", async (importOriginal) => {
   const actual = await importOriginal<typeof originalConfigModule>();
   return {

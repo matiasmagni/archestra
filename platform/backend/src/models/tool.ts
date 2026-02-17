@@ -460,7 +460,10 @@ class ToolModel {
           catalogId: tool.catalogId,
           mcpServerId: tool.mcpServerId,
           agentId: null,
-          meta: (tool.meta ?? undefined) as Record<string, unknown> | null | undefined,
+          meta: (tool.meta ?? undefined) as
+            | Record<string, unknown>
+            | null
+            | undefined,
         });
       }
     }

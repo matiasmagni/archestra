@@ -28,12 +28,8 @@ import logger from "@/logging";
 import {
   AgentModel,
   AgentTeamModel,
-<<<<<<< HEAD
   InternalMcpCatalogModel,
-  isArchestraPrefixedToken,
   McpServerModel,
-=======
->>>>>>> origin/main
   McpToolCallModel,
   MemberModel,
   OAuthAccessTokenModel,
@@ -43,13 +39,10 @@ import {
   UserModel,
   UserTokenModel,
 } from "@/models";
-<<<<<<< HEAD
-import { secretManager } from "@/secretsmanager";
-=======
 import { metrics } from "@/observability";
 import { startActiveMcpSpan } from "@/routes/proxy/utils/tracing";
+import { secretManager } from "@/secrets-manager";
 import { jwksValidator } from "@/services/jwks-validator";
->>>>>>> origin/main
 import { type CommonToolCall, UuidIdSchema } from "@/types";
 import { deriveAuthMethod } from "@/utils/auth-method";
 import { estimateToolResultContentLength } from "@/utils/tool-result-preview";
@@ -121,14 +114,16 @@ export async function createAgentServer(
     // Fetch fresh on every request to ensure we get newly assigned tools
     const mcpTools = await ToolModel.getMcpToolsByAgent(agentId);
 
-    const toolsList = mcpTools.map(({ name, description, parameters, meta }) => ({
-      name,
-      title: archestraToolTitles.get(name) || name,
-      description,
-      inputSchema: parameters,
-      annotations: {},
-      _meta: meta ?? {},
-    }));
+    const toolsList = mcpTools.map(
+      ({ name, description, parameters, meta }) => ({
+        name,
+        title: archestraToolTitles.get(name) || name,
+        description,
+        inputSchema: parameters,
+        annotations: {},
+        _meta: meta ?? {},
+      }),
+    );
 
     // Log tools/list request
     try {
@@ -369,7 +364,9 @@ export async function createAgentServer(
       }
       let secrets: Record<string, unknown> = {};
       if (mcpServer.secretId) {
-        const secretRecord = await secretManager().getSecret(mcpServer.secretId);
+        const secretRecord = await secretManager().getSecret(
+          mcpServer.secretId,
+        );
         if (secretRecord?.secret) {
           secrets = secretRecord.secret;
         }
@@ -383,14 +380,13 @@ export async function createAgentServer(
         });
         return { contents: result.contents };
       } catch (err) {
-        logger.info(
-          { err, uri, agentId },
-          "MCP gateway resources/read failed",
-        );
+        logger.info({ err, uri, agentId }, "MCP gateway resources/read failed");
         throw {
           code: -32603,
           message:
-            err instanceof Error ? err.message : "Failed to read MCP App resource",
+            err instanceof Error
+              ? err.message
+              : "Failed to read MCP App resource",
           data: { uri },
         };
       }

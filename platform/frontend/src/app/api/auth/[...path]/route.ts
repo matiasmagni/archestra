@@ -69,7 +69,11 @@ async function handler(
     });
   } catch (err: unknown) {
     const code = unwrapNetworkErrorCode(err);
-    if (code === "ECONNREFUSED" || code === "ECONNRESET" || code === "ETIMEDOUT") {
+    if (
+      code === "ECONNREFUSED" ||
+      code === "ECONNRESET" ||
+      code === "ETIMEDOUT"
+    ) {
       return NextResponse.json(
         {
           error: "Backend unreachable",

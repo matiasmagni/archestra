@@ -1148,9 +1148,6 @@ export default function ChatPage() {
             )}
             <ChatMessages
               conversationId={conversationId}
-<<<<<<< HEAD
-              agentId={conversation?.agentId}
-=======
               agentId={currentProfileId || initialAgentId || undefined}
               agentName={
                 _conversationInternalAgent?.name ||
@@ -1181,7 +1178,6 @@ export default function ChatPage() {
                     }
               }
               hideArrow={isPlaywrightSetupVisible}
->>>>>>> origin/main
               messages={messages}
               status={status}
               isLoadingConversation={isLoadingConversation}

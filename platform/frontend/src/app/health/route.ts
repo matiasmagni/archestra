@@ -1,6 +1,6 @@
+import { NextResponse } from "next/server";
 import { getBackendBaseUrl } from "@/lib/config";
 import { unwrapNetworkErrorCode } from "@/lib/utils";
-import { NextResponse } from "next/server";
 
 /**
  * Proxy GET /health to the backend. When the backend is down (ECONNREFUSED),
@@ -15,15 +15,22 @@ export async function GET() {
     const body = await res.text();
     return new NextResponse(body, {
       status: res.status,
-      headers: { "Content-Type": res.headers.get("Content-Type") ?? "application/json" },
+      headers: {
+        "Content-Type": res.headers.get("Content-Type") ?? "application/json",
+      },
     });
   } catch (err: unknown) {
     const code = unwrapNetworkErrorCode(err);
-    if (code === "ECONNREFUSED" || code === "ECONNRESET" || code === "ETIMEDOUT") {
+    if (
+      code === "ECONNREFUSED" ||
+      code === "ECONNRESET" ||
+      code === "ETIMEDOUT"
+    ) {
       return NextResponse.json(
         {
           error: "Backend unreachable",
-          message: "Start the full app from platform root: pnpm dev (backend must be running on port 9000).",
+          message:
+            "Start the full app from platform root: pnpm dev (backend must be running on port 9000).",
         },
         { status: 503, headers: { "Content-Type": "application/json" } },
       );
