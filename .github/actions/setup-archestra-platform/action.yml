@@ -48,6 +48,10 @@ inputs:
     description: "Turborepo remote caching token (only required when build-platform-image is true)"
     required: false
     default: ""
+  mcp-server-base-image-tag:
+    description: "Pre-built MCP server base image tag to load into Kind. If provided, skips building the image."
+    required: false
+    default: ""
 
 outputs:
   backend-url:
@@ -61,11 +65,10 @@ runs:
   using: composite
   steps:
     - name: Install Kind
-      uses: helm/kind-action@92086f6be054225fa813e0a4b13787fc9088faab # v1.13.0
+      uses: ./.github/actions/install-kind-cluster
       with:
         config: ${{ inputs.kind-config-path }}
-        cluster_name: ${{ inputs.kind-cluster-name }}
-        install_only: false
+        cluster-name: ${{ inputs.kind-cluster-name }}
 
     - name: Debug Kind cluster
       shell: bash
@@ -91,12 +94,19 @@ runs:
         turbo-team: ${{ inputs.turbo-team }}
         turbo-token: ${{ inputs.turbo-token }}
 
-    - name: Pull Docker image
+    - name: Pull Docker image (if not already present)
       if: ${{ inputs.build-platform-image != 'true' }}
       shell: bash
       env:
         PLATFORM_IMAGE_TAG: ${{ inputs.platform-image-tag }}
-      run: docker pull "${PLATFORM_IMAGE_TAG}"
+      run: |
+        # Check if image already exists locally (e.g., loaded from artifact)
+        if docker image inspect "${PLATFORM_IMAGE_TAG}" > /dev/null 2>&1; then
+          echo "Image ${PLATFORM_IMAGE_TAG} already exists locally, skipping pull"
+        else
+          echo "Pulling image ${PLATFORM_IMAGE_TAG} from registry..."
+          docker pull "${PLATFORM_IMAGE_TAG}"
+        fi
 
     - name: Load Docker image into Kind
       shell: bash
@@ -105,15 +115,19 @@ runs:
         KIND_CLUSTER_NAME: ${{ inputs.kind-cluster-name }}
       run: kind load docker-image "${PLATFORM_IMAGE_TAG}" --name "${KIND_CLUSTER_NAME}"
 
-    - name: Deploy e2e test dependencies (WireMock, Keycloak)
-      if: ${{ inputs.deploy-e2e-dependencies == 'true' }}
+    - name: Load MCP server base image into Kind
+      if: ${{ inputs.mcp-server-base-image-tag != '' }}
       shell: bash
       env:
-        PLATFORM_CONTEXT: ${{ inputs.platform-context }}
+        MCP_SERVER_BASE_IMAGE_TAG: ${{ inputs.mcp-server-base-image-tag }}
+        KIND_CLUSTER_NAME: ${{ inputs.kind-cluster-name }}
       run: |
-        helm install e2e-tests "${PLATFORM_CONTEXT}/helm/e2e-tests"
+        echo "Loading MCP server base image into Kind cluster..."
+        kind load docker-image "${MCP_SERVER_BASE_IMAGE_TAG}" --name "${KIND_CLUSTER_NAME}"
+        echo "MCP server base image loaded into Kind"
 
-    - name: Deploy Archestra Platform with Helm
+    - name: Deploy e2e dependencies and platform in parallel
+      if: ${{ inputs.deploy-e2e-dependencies == 'true' }}
       shell: bash
       env:
         HELM_CHART_REF: ${{ inputs.helm-chart-ref }}
@@ -121,6 +135,59 @@ runs:
         PLATFORM_CONTEXT: ${{ inputs.platform-context }}
         HELM_VALUES_PATH: ${{ inputs.helm-values-path }}
         PLATFORM_IMAGE_TAG: ${{ inputs.platform-image-tag }}
+        MCP_SERVER_BASE_IMAGE_TAG: ${{ inputs.mcp-server-base-image-tag }}
+      run: |
+        # Start e2e-tests Helm install in background
+        echo "Starting e2e-tests Helm install in background..."
+        helm install e2e-tests "${PLATFORM_CONTEXT}/helm/e2e-tests" &
+        E2E_PID=$!
+
+        # Determine chart reference for platform
+        if [ -n "${HELM_CHART_REF}" ]; then
+          CHART_REF="${HELM_CHART_REF}"
+          VERSION_FLAG=""
+          if [ -n "${HELM_CHART_VERSION}" ]; then
+            VERSION_FLAG="--version ${HELM_CHART_VERSION}"
+          fi
+        else
+          CHART_REF="${PLATFORM_CONTEXT}/helm/archestra"
+          VERSION_FLAG=""
+        fi
+
+        # Build MCP server base image override flag if provided
+        MCP_SET_FLAG=""
+        if [ -n "${MCP_SERVER_BASE_IMAGE_TAG}" ]; then
+          MCP_SET_FLAG="--set archestra.env.ARCHESTRA_ORCHESTRATOR_MCP_SERVER_BASE_IMAGE=${MCP_SERVER_BASE_IMAGE_TAG}"
+        fi
+
+        # Deploy platform (this takes longer, so e2e-tests will finish during this)
+        echo "Deploying Archestra Platform..."
+        helm install archestra-platform "${CHART_REF}" \
+          ${VERSION_FLAG} \
+          --values "${HELM_VALUES_PATH}" \
+          --set "archestra.image=${PLATFORM_IMAGE_TAG}" \
+          ${MCP_SET_FLAG} \
+          --atomic --timeout=4m
+
+        # Wait for e2e-tests to complete (should already be done by now)
+        echo "Waiting for e2e-tests Helm install to complete..."
+        if wait "$E2E_PID"; then
+          echo "e2e-tests Helm install completed successfully"
+        else
+          echo "e2e-tests Helm install failed"
+          exit 1
+        fi
+
+    - name: Deploy Archestra Platform with Helm
+      if: ${{ inputs.deploy-e2e-dependencies != 'true' }}
+      shell: bash
+      env:
+        HELM_CHART_REF: ${{ inputs.helm-chart-ref }}
+        HELM_CHART_VERSION: ${{ inputs.helm-chart-version }}
+        PLATFORM_CONTEXT: ${{ inputs.platform-context }}
+        HELM_VALUES_PATH: ${{ inputs.helm-values-path }}
+        PLATFORM_IMAGE_TAG: ${{ inputs.platform-image-tag }}
+        MCP_SERVER_BASE_IMAGE_TAG: ${{ inputs.mcp-server-base-image-tag }}
       run: |
         # Determine chart reference: use helm-chart-ref if set, otherwise use local path
         if [ -n "${HELM_CHART_REF}" ]; then
@@ -134,11 +201,18 @@ runs:
           VERSION_FLAG=""
         fi
 
+        # Build MCP server base image override flag if provided
+        MCP_SET_FLAG=""
+        if [ -n "${MCP_SERVER_BASE_IMAGE_TAG}" ]; then
+          MCP_SET_FLAG="--set archestra.env.ARCHESTRA_ORCHESTRATOR_MCP_SERVER_BASE_IMAGE=${MCP_SERVER_BASE_IMAGE_TAG}"
+        fi
+
         helm install archestra-platform "${CHART_REF}" \
           ${VERSION_FLAG} \
           --values "${HELM_VALUES_PATH}" \
           --set "archestra.image=${PLATFORM_IMAGE_TAG}" \
-          --wait --timeout=5m
+          ${MCP_SET_FLAG} \
+          --atomic --timeout=4m
 
     - name: Verify deployment
       shell: bash
@@ -156,12 +230,12 @@ runs:
       shell: bash
       run: |
         echo "Waiting for platform pods to be ready..."
-        kubectl wait --for=condition=Ready pods -l app.kubernetes.io/name=archestra-platform --timeout=120s
+        kubectl wait --for=condition=Ready pods -l app.kubernetes.io/name=archestra-platform --timeout=90s
         echo "Platform pods are ready"
 
         echo "Verifying services are accessible..."
-        curl --retry 10 --retry-delay 2 --retry-connrefused http://localhost:3000/ || (echo "Frontend not accessible" && exit 1)
-        curl --retry 10 --retry-delay 2 --retry-connrefused http://localhost:9000/health || (echo "Backend not accessible" && exit 1)
+        curl --retry 5 --retry-delay 1 --retry-connrefused http://localhost:3000/ || (echo "Frontend not accessible" && exit 1)
+        curl --retry 5 --retry-delay 1 --retry-connrefused http://localhost:9000/health || (echo "Backend not accessible" && exit 1)
         echo "All services are ready"
 
     - name: Set output URLs

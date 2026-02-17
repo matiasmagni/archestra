@@ -1,3 +1,8 @@
+import {
+  PLAYWRIGHT_MCP_CATALOG_ID,
+  TOOL_ARTIFACT_WRITE_FULL_NAME,
+  TOOL_TODO_WRITE_FULL_NAME,
+} from "@shared";
 import { describe, expect, test } from "@/test";
 import AgentModel from "./agent";
 import TeamModel from "./team";
@@ -7,8 +12,7 @@ describe("AgentModel", () => {
     await AgentModel.create({ name: "Test Agent", teams: [] });
     await AgentModel.create({ name: "Test Agent 2", teams: [] });
 
-    // Expecting 3: 2 created + 1 default agent from migration
-    expect(await AgentModel.findAll()).toHaveLength(3);
+    expect(await AgentModel.findAll()).toHaveLength(2);
   });
 
   describe("exists", () => {
@@ -63,7 +67,7 @@ describe("AgentModel", () => {
 
     test("returns empty Set when no agents exist", async () => {
       const nonExistentId1 = "00000000-0000-0000-0000-000000000000";
-      const nonExistentId2 = "00000000-0000-0000-0000-000000000001";
+      const nonExistentId2 = "00000000-0000-4000-8000-000000000099";
 
       const existingIds = await AgentModel.existsBatch([
         nonExistentId1,
@@ -118,8 +122,7 @@ describe("AgentModel", () => {
       await AgentModel.create({ name: "Agent 3", teams: [] });
 
       const agents = await AgentModel.findAll(admin.id, true);
-      // Expecting 4: 3 created + 1 default agent from migration
-      expect(agents).toHaveLength(4);
+      expect(agents).toHaveLength(3);
     });
 
     test("member only sees agents in their teams", async ({
@@ -560,8 +563,7 @@ describe("AgentModel", () => {
 
       const agents = await AgentModel.findAll();
 
-      // Expecting 3: 2 created + 1 default agent from migration
-      expect(agents).toHaveLength(3);
+      expect(agents).toHaveLength(2);
 
       // Check first agent's labels are sorted
       const agent1 = agents.find((a) => a.name === "Agent 1");
@@ -636,7 +638,7 @@ describe("AgentModel", () => {
     }) => {
       const admin = await makeAdmin();
 
-      // Create 3 agents (+ 1 default from migration = 4 total)
+      // Create 3 agents
       await AgentModel.create({
         name: "Agent 1",
         teams: [],
@@ -660,7 +662,7 @@ describe("AgentModel", () => {
       );
 
       expect(result.data.length).toBe(result.pagination.total);
-      expect(result.pagination.total).toBe(4); // 3 + 1 default
+      expect(result.pagination.total).toBe(3);
     });
 
     test("pagination works correctly when agents have many tools", async ({
@@ -723,7 +725,7 @@ describe("AgentModel", () => {
 
       // agent4 and agent5 have no tools (just the default archestra tools)
 
-      // Query with limit=20 - this should return all 6 agents (5 + 1 default)
+      // Query with limit=20 - this should return all 5 agents
       // Bug scenario: if LIMIT was applied to joined rows, we'd only get 2 agents
       const result = await AgentModel.findAllPaginated(
         { limit: 20, offset: 0 },
@@ -733,8 +735,8 @@ describe("AgentModel", () => {
         true,
       );
 
-      expect(result.data).toHaveLength(6); // 5 created + 1 default
-      expect(result.pagination.total).toBe(6);
+      expect(result.data).toHaveLength(5);
+      expect(result.pagination.total).toBe(5);
 
       // Verify all agents are returned (not just the first 2 with many tools)
       const agentNames = result.data.map((a) => a.name).sort();
@@ -851,7 +853,7 @@ describe("AgentModel", () => {
         admin.id,
         true,
       );
-      expect(resultByName.data).toHaveLength(5); // 4 + 1 default
+      expect(resultByName.data).toHaveLength(4);
       expect(resultByName.data[0].name).toBe("Alpha");
 
       // Test sortBy createdAt
@@ -862,7 +864,7 @@ describe("AgentModel", () => {
         admin.id,
         true,
       );
-      expect(resultByDate.data).toHaveLength(5);
+      expect(resultByDate.data).toHaveLength(4);
 
       // Test sortBy toolsCount
       const resultByToolsCount = await AgentModel.findAllPaginated(
@@ -872,7 +874,7 @@ describe("AgentModel", () => {
         admin.id,
         true,
       );
-      expect(resultByToolsCount.data).toHaveLength(5);
+      expect(resultByToolsCount.data).toHaveLength(4);
       // Agent with most tools should be first
       expect(resultByToolsCount.data[0].name).toBe("Zebra");
 
@@ -884,7 +886,7 @@ describe("AgentModel", () => {
         admin.id,
         true,
       );
-      expect(resultByTeam.data).toHaveLength(5);
+      expect(resultByTeam.data).toHaveLength(4);
     });
 
     test("pagination offset works correctly with many tools", async ({
@@ -924,7 +926,7 @@ describe("AgentModel", () => {
       );
 
       expect(page1.data).toHaveLength(2);
-      expect(page1.pagination.total).toBe(6); // 5 + 1 default
+      expect(page1.pagination.total).toBe(5);
 
       // Second page (limit=2, offset=2)
       const page2 = await AgentModel.findAllPaginated(
@@ -936,7 +938,7 @@ describe("AgentModel", () => {
       );
 
       expect(page2.data).toHaveLength(2);
-      expect(page2.pagination.total).toBe(6);
+      expect(page2.pagination.total).toBe(5);
 
       // Verify no overlap between pages
       const page1Ids = page1.data.map((a) => a.id);
@@ -946,8 +948,8 @@ describe("AgentModel", () => {
     });
   });
 
-  describe("Archestra Tools Exclusion", () => {
-    test("findAllPaginated excludes Archestra MCP tools from tools array", async ({
+  describe("Archestra Tools Inclusion", () => {
+    test("findAllPaginated includes Archestra MCP tools in tools array", async ({
       makeAdmin,
       makeTool,
       makeAgentTool,
@@ -970,7 +972,7 @@ describe("AgentModel", () => {
         await makeAgentTool(agent.id, tool.id);
       }
 
-      // Add some Archestra MCP tools (these should be excluded)
+      // Add some Archestra MCP tools (these should be included)
       for (let i = 0; i < 5; i++) {
         const tool = await makeTool({
           name: `archestra__archestra_tool_${i}`,
@@ -993,24 +995,18 @@ describe("AgentModel", () => {
       const testAgent = result.data.find((a) => a.name === "Test Agent");
       expect(testAgent).toBeDefined();
 
-      // Should only include the 3 regular tools, not the 5 Archestra tools
-      expect(testAgent?.tools).toHaveLength(3);
+      // Should include all 8 tools (3 regular + 5 Archestra)
+      expect(testAgent?.tools).toHaveLength(8);
 
-      // Verify all tools in the array are regular tools (not Archestra)
-      for (const tool of testAgent?.tools ?? []) {
-        expect(tool.name).not.toMatch(/^archestra__/);
-      }
-
-      // Verify the regular tools are there
-      const toolNames = testAgent?.tools.map((t) => t.name).sort();
-      expect(toolNames).toEqual([
-        "regular_tool_0",
-        "regular_tool_1",
-        "regular_tool_2",
-      ]);
+      // Verify both regular and Archestra tools are present
+      const toolNames = testAgent?.tools.map((t) => t.name).sort() ?? [];
+      expect(toolNames).toContain("regular_tool_0");
+      expect(toolNames).toContain("regular_tool_1");
+      expect(toolNames).toContain("regular_tool_2");
+      expect(toolNames).toContain("archestra__archestra_tool_0");
     });
 
-    test("sorting by toolsCount excludes Archestra tools from count", async ({
+    test("sorting by toolsCount includes Archestra tools in count", async ({
       makeAdmin,
       makeTool,
       makeAgentTool,
@@ -1086,11 +1082,11 @@ describe("AgentModel", () => {
       expect(testAgent1).toBeDefined();
       expect(testAgent2).toBeDefined();
 
-      // Verify the tools count excludes Archestra tools
-      expect(testAgent1?.tools).toHaveLength(5); // Only regular tools
-      expect(testAgent2?.tools).toHaveLength(2); // Only regular tools
+      // Verify the tools count includes all tools (regular + Archestra)
+      expect(testAgent1?.tools).toHaveLength(15); // 5 regular + 10 Archestra
+      expect(testAgent2?.tools).toHaveLength(22); // 2 regular + 20 Archestra
 
-      // Verify sorting order based on regular tools count (not total tools including Archestra)
+      // Verify sorting order based on total tools count (including Archestra)
       const agent1Index = result.data.findIndex(
         (a) => a.name === "Agent with 5 regular tools",
       );
@@ -1098,11 +1094,11 @@ describe("AgentModel", () => {
         (a) => a.name === "Agent with 2 regular tools",
       );
 
-      // agent1 should come before agent2 when sorted by toolsCount desc
-      expect(agent1Index).toBeLessThan(agent2Index);
+      // agent2 should come before agent1 when sorted by toolsCount desc (22 > 15)
+      expect(agent2Index).toBeLessThan(agent1Index);
     });
 
-    test("agents with only Archestra tools show 0 tools", async ({
+    test("agents with only Archestra tools show all Archestra tools", async ({
       makeAdmin,
       makeTool,
       makeAgentTool,
@@ -1140,8 +1136,528 @@ describe("AgentModel", () => {
       );
       expect(testAgent).toBeDefined();
 
-      // Should show 0 tools since all were Archestra tools
-      expect(testAgent?.tools).toHaveLength(0);
+      // Should show all 3 Archestra tools
+      expect(testAgent?.tools).toHaveLength(3);
+    });
+
+    test("all tool patterns are included", async ({
+      makeAdmin,
+      makeTool,
+      makeAgentTool,
+    }) => {
+      const admin = await makeAdmin();
+
+      // Create an agent
+      const agent = await AgentModel.create({
+        name: "Pattern Test Agent",
+        teams: [],
+      });
+
+      // Create tools with double underscore
+      const doubleUnderscoreTool = await makeTool({
+        name: "archestra__pattern_test_tool",
+        description: "Archestra tool",
+        parameters: {},
+      });
+
+      // Create tools with similar names
+      const singleUnderscoreTool = await makeTool({
+        name: "archestra_pattern_single",
+        description: "Single underscore tool",
+        parameters: {},
+      });
+      const noUnderscoreTool = await makeTool({
+        name: "archestrapatterntest",
+        description: "No underscore tool",
+        parameters: {},
+      });
+      const regularTool = await makeTool({
+        name: "regular_pattern_tool",
+        description: "Regular tool",
+        parameters: {},
+      });
+
+      await makeAgentTool(agent.id, doubleUnderscoreTool.id);
+      await makeAgentTool(agent.id, singleUnderscoreTool.id);
+      await makeAgentTool(agent.id, noUnderscoreTool.id);
+      await makeAgentTool(agent.id, regularTool.id);
+
+      // Query the agent
+      const result = await AgentModel.findAllPaginated(
+        { limit: 10, offset: 0 },
+        { sortBy: "createdAt", sortDirection: "desc" },
+        {},
+        admin.id,
+        true,
+      );
+
+      // Find our test agent
+      const testAgent = result.data.find(
+        (a) => a.name === "Pattern Test Agent",
+      );
+      expect(testAgent).toBeDefined();
+
+      // Should have all 4 tools (no exclusion)
+      expect(testAgent?.tools).toHaveLength(4);
+
+      const toolNames = testAgent?.tools.map((t) => t.name) ?? [];
+      expect(toolNames).toContain("archestra_pattern_single");
+      expect(toolNames).toContain("archestrapatterntest");
+      expect(toolNames).toContain("regular_pattern_tool");
+      expect(toolNames).toContain("archestra__pattern_test_tool");
+    });
+
+    test("sortBy toolsCount includes all tools", async ({
+      makeAdmin,
+      makeTool,
+      makeAgentTool,
+    }) => {
+      const admin = await makeAdmin();
+
+      // Create two agents
+      const agent1 = await AgentModel.create({
+        name: "Agent with mixed tools",
+        teams: [],
+      });
+
+      const agent2 = await AgentModel.create({
+        name: "Agent with single underscore",
+        teams: [],
+      });
+
+      // Give agent1: 1 regular + 5 archestra__ tools = 6 total
+      const regularTool = await makeTool({
+        name: "toolscount_regular_tool",
+        description: "Regular tool",
+        parameters: {},
+      });
+      await makeAgentTool(agent1.id, regularTool.id);
+
+      for (let i = 0; i < 5; i++) {
+        const tool = await makeTool({
+          name: `archestra__toolscount_${i}`,
+          description: `Archestra tool ${i}`,
+          parameters: {},
+        });
+        await makeAgentTool(agent1.id, tool.id);
+      }
+
+      // Give agent2: 3 archestra_ (single underscore) tools = 3 total
+      for (let i = 0; i < 3; i++) {
+        const tool = await makeTool({
+          name: `archestra_single_${i}`,
+          description: `Single underscore tool ${i}`,
+          parameters: {},
+        });
+        await makeAgentTool(agent2.id, tool.id);
+      }
+
+      // Sort by toolsCount descending
+      const result = await AgentModel.findAllPaginated(
+        { limit: 10, offset: 0 },
+        { sortBy: "toolsCount", sortDirection: "desc" },
+        {},
+        admin.id,
+        true,
+      );
+
+      const agent1Result = result.data.find(
+        (a) => a.name === "Agent with mixed tools",
+      );
+      const agent2Result = result.data.find(
+        (a) => a.name === "Agent with single underscore",
+      );
+
+      expect(agent1Result).toBeDefined();
+      expect(agent2Result).toBeDefined();
+
+      // agent1 should have 6 tools (1 regular + 5 archestra__)
+      expect(agent1Result?.tools).toHaveLength(6);
+
+      // agent2 should have 3 tools
+      expect(agent2Result?.tools).toHaveLength(3);
+
+      // agent1 should come before agent2 in sort order (6 > 3)
+      const agent1Index = result.data.findIndex(
+        (a) => a.name === "Agent with mixed tools",
+      );
+      const agent2Index = result.data.findIndex(
+        (a) => a.name === "Agent with single underscore",
+      );
+
+      expect(agent1Index).toBeLessThan(agent2Index);
+    });
+  });
+
+  describe("findById Junction Table", () => {
+    test("findById returns tools from junction table", async ({
+      makeTool,
+      makeAgentTool,
+    }) => {
+      // Create an agent
+      const agent = await AgentModel.create({
+        name: "Test Agent",
+        teams: [],
+      });
+
+      // Add tools via the junction table (agent_tools)
+      const tool1 = await makeTool({
+        name: "junction_tool_1",
+        description: "Tool 1",
+        parameters: {},
+      });
+      const tool2 = await makeTool({
+        name: "junction_tool_2",
+        description: "Tool 2",
+        parameters: {},
+      });
+      const tool3 = await makeTool({
+        name: "junction_tool_3",
+        description: "Tool 3",
+        parameters: {},
+      });
+
+      await makeAgentTool(agent.id, tool1.id);
+      await makeAgentTool(agent.id, tool2.id);
+      await makeAgentTool(agent.id, tool3.id);
+
+      // Retrieve the agent by ID
+      const foundAgent = await AgentModel.findById(agent.id);
+
+      expect(foundAgent).not.toBeNull();
+      expect(foundAgent?.tools).toHaveLength(3);
+
+      const toolNames = foundAgent?.tools.map((t) => t.name).sort();
+      expect(toolNames).toEqual([
+        "junction_tool_1",
+        "junction_tool_2",
+        "junction_tool_3",
+      ]);
+    });
+
+    test("findById includes Archestra MCP tools", async ({
+      makeTool,
+      makeAgentTool,
+    }) => {
+      // Create an agent
+      const agent = await AgentModel.create({
+        name: "Test Agent",
+        teams: [],
+      });
+
+      // Add regular tools
+      const regularTool1 = await makeTool({
+        name: "findbyid_regular_tool_1",
+        description: "Regular tool 1",
+        parameters: {},
+      });
+      const regularTool2 = await makeTool({
+        name: "findbyid_regular_tool_2",
+        description: "Regular tool 2",
+        parameters: {},
+      });
+
+      // Add Archestra tools
+      const archestraTool1 = await makeTool({
+        name: "archestra__findbyid_tool_1",
+        description: "Archestra tool 1",
+        parameters: {},
+      });
+      const archestraTool2 = await makeTool({
+        name: "archestra__findbyid_tool_2",
+        description: "Archestra tool 2",
+        parameters: {},
+      });
+
+      await makeAgentTool(agent.id, regularTool1.id);
+      await makeAgentTool(agent.id, regularTool2.id);
+      await makeAgentTool(agent.id, archestraTool1.id);
+      await makeAgentTool(agent.id, archestraTool2.id);
+
+      // Retrieve the agent by ID
+      const foundAgent = await AgentModel.findById(agent.id);
+
+      expect(foundAgent).not.toBeNull();
+      // Should include all 4 tools (2 regular + 2 Archestra)
+      expect(foundAgent?.tools).toHaveLength(4);
+
+      const toolNames = foundAgent?.tools.map((t) => t.name).sort();
+      expect(toolNames).toEqual([
+        "archestra__findbyid_tool_1",
+        "archestra__findbyid_tool_2",
+        "findbyid_regular_tool_1",
+        "findbyid_regular_tool_2",
+      ]);
+    });
+
+    test("findById returns empty tools array when agent has no tools", async () => {
+      // Create an agent with no tools
+      const agent = await AgentModel.create({
+        name: "No Tools Agent",
+        teams: [],
+      });
+
+      const foundAgent = await AgentModel.findById(agent.id);
+
+      expect(foundAgent).not.toBeNull();
+      expect(foundAgent?.tools).toHaveLength(0);
+    });
+
+    test("findById returns Archestra tools when agent has only Archestra tools", async ({
+      makeTool,
+      makeAgentTool,
+    }) => {
+      // Create an agent
+      const agent = await AgentModel.create({
+        name: "Archestra Only Agent",
+        teams: [],
+      });
+
+      // Add only Archestra tools
+      const archestraTool = await makeTool({
+        name: "archestra__some_tool",
+        description: "Archestra tool",
+        parameters: {},
+      });
+      await makeAgentTool(agent.id, archestraTool.id);
+
+      const foundAgent = await AgentModel.findById(agent.id);
+
+      expect(foundAgent).not.toBeNull();
+      expect(foundAgent?.tools).toHaveLength(1);
+      expect(foundAgent?.tools[0].name).toBe("archestra__some_tool");
+    });
+  });
+
+  describe("Default Archestra Tools Assignment", () => {
+    test("new agent has artifact_write and todo_write tools assigned by default", async ({
+      seedAndAssignArchestraTools,
+      makeAgent,
+    }) => {
+      // First seed Archestra tools (simulates app startup)
+      const existingAgent = await makeAgent();
+      await seedAndAssignArchestraTools(existingAgent.id);
+
+      // Create a new agent - should have default tools assigned
+      const agent = await AgentModel.create({
+        name: "Agent with Default Tools",
+        teams: [],
+      });
+
+      // Verify the agent has the default Archestra tools assigned
+      const toolNames = agent.tools.map((t) => t.name);
+      expect(toolNames).toContain(TOOL_ARTIFACT_WRITE_FULL_NAME);
+      expect(toolNames).toContain(TOOL_TODO_WRITE_FULL_NAME);
+    });
+
+    test("new agent returns assigned tools without Archestra prefix filtering", async ({
+      seedAndAssignArchestraTools,
+      makeAgent,
+    }) => {
+      // First seed Archestra tools
+      const existingAgent = await makeAgent();
+      await seedAndAssignArchestraTools(existingAgent.id);
+
+      // Create a new agent
+      const agent = await AgentModel.create({
+        name: "Test Default Tools Agent",
+        teams: [],
+      });
+
+      // The create method should return the assigned tools
+      expect(agent.tools.length).toBeGreaterThanOrEqual(2);
+
+      // Verify artifact_write and todo_write are present
+      const hasArtifactWrite = agent.tools.some(
+        (t) => t.name === TOOL_ARTIFACT_WRITE_FULL_NAME,
+      );
+      const hasTodoWrite = agent.tools.some(
+        (t) => t.name === TOOL_TODO_WRITE_FULL_NAME,
+      );
+
+      expect(hasArtifactWrite).toBe(true);
+      expect(hasTodoWrite).toBe(true);
+    });
+  });
+
+  describe("Description", () => {
+    test("can create an agent with description", async () => {
+      const agent = await AgentModel.create({
+        name: "Described Agent",
+        agentType: "agent",
+        description: "An agent that helps with code review",
+        teams: [],
+      });
+
+      expect(agent.description).toBe("An agent that helps with code review");
+    });
+
+    test("description defaults to null", async () => {
+      const agent = await AgentModel.create({
+        name: "Basic Agent",
+        agentType: "agent",
+        teams: [],
+      });
+
+      expect(agent.description).toBeNull();
+    });
+
+    test("findById returns description", async () => {
+      const agent = await AgentModel.create({
+        name: "Find Me Agent",
+        agentType: "agent",
+        description: "Test description",
+        teams: [],
+      });
+
+      const found = await AgentModel.findById(agent.id);
+      expect(found).not.toBeNull();
+      expect(found?.description).toBe("Test description");
+    });
+
+    test("update can modify description", async () => {
+      const agent = await AgentModel.create({
+        name: "Updatable Agent",
+        agentType: "agent",
+        description: "Original description",
+        teams: [],
+      });
+
+      const updated = await AgentModel.update(agent.id, {
+        description: "Updated description",
+      });
+
+      expect(updated?.description).toBe("Updated description");
+    });
+
+    test("findAll returns description for all agents", async () => {
+      await AgentModel.create({
+        name: "Agent A",
+        agentType: "agent",
+        description: "Desc A",
+        teams: [],
+      });
+      await AgentModel.create({
+        name: "Agent B",
+        agentType: "agent",
+        teams: [],
+      });
+
+      const agents = await AgentModel.findAll();
+      const agentA = agents.find((a) => a.name === "Agent A");
+      const agentB = agents.find((a) => a.name === "Agent B");
+
+      expect(agentA?.description).toBe("Desc A");
+      expect(agentB?.description).toBeNull();
+    });
+  });
+
+  describe("hasPlaywrightToolsAssigned", () => {
+    test("returns false when no playwright tools are assigned", async () => {
+      const agent = await AgentModel.create({
+        name: "No Playwright Agent",
+        teams: [],
+      });
+
+      const result = await AgentModel.hasPlaywrightToolsAssigned(agent.id);
+      expect(result).toBe(false);
+    });
+
+    test("returns true when playwright tools are assigned", async ({
+      makeTool,
+      makeAgentTool,
+      makeInternalMcpCatalog,
+    }) => {
+      const agent = await AgentModel.create({
+        name: "Playwright Agent",
+        teams: [],
+      });
+
+      const catalog = await makeInternalMcpCatalog({
+        id: PLAYWRIGHT_MCP_CATALOG_ID,
+        name: "Playwright",
+        serverType: "builtin",
+      });
+
+      const tool = await makeTool({
+        name: "playwright__browser_snapshot",
+        description: "Take a snapshot",
+        parameters: {},
+        catalogId: catalog.id,
+      });
+
+      await makeAgentTool(agent.id, tool.id);
+
+      const result = await AgentModel.hasPlaywrightToolsAssigned(agent.id);
+      expect(result).toBe(true);
+    });
+  });
+
+  describe("getMCPGatewayOrCreateDefault Junction Table", () => {
+    test("getMCPGatewayOrCreateDefault returns tools from junction table", async ({
+      makeTool,
+      makeAgentTool,
+    }) => {
+      // Get the default MCP gateway
+      const defaultAgent = await AgentModel.getMCPGatewayOrCreateDefault();
+
+      // Add tools to the default agent via junction table
+      const tool1 = await makeTool({
+        name: "default_agent_tool_1",
+        description: "Tool 1",
+        parameters: {},
+      });
+      const tool2 = await makeTool({
+        name: "default_agent_tool_2",
+        description: "Tool 2",
+        parameters: {},
+      });
+
+      await makeAgentTool(defaultAgent.id, tool1.id);
+      await makeAgentTool(defaultAgent.id, tool2.id);
+
+      // Get the default MCP gateway again - should include the tools
+      const foundAgent = await AgentModel.getMCPGatewayOrCreateDefault();
+
+      expect(foundAgent).not.toBeNull();
+      expect(foundAgent.tools.length).toBeGreaterThanOrEqual(2);
+
+      const toolNames = foundAgent.tools.map((t) => t.name);
+      expect(toolNames).toContain("default_agent_tool_1");
+      expect(toolNames).toContain("default_agent_tool_2");
+    });
+
+    test("getMCPGatewayOrCreateDefault includes Archestra MCP tools", async ({
+      makeTool,
+      makeAgentTool,
+    }) => {
+      // Get the default MCP gateway
+      const defaultAgent = await AgentModel.getMCPGatewayOrCreateDefault();
+
+      // Add regular tools
+      const regularTool = await makeTool({
+        name: "default_regular_tool",
+        description: "Regular tool",
+        parameters: {},
+      });
+
+      // Add Archestra tools
+      const archestraTool = await makeTool({
+        name: "archestra__default_tool",
+        description: "Archestra tool",
+        parameters: {},
+      });
+
+      await makeAgentTool(defaultAgent.id, regularTool.id);
+      await makeAgentTool(defaultAgent.id, archestraTool.id);
+
+      // Get the default MCP gateway again
+      const foundAgent = await AgentModel.getMCPGatewayOrCreateDefault();
+
+      // Verify both regular and Archestra tools are included
+      const toolNames = foundAgent.tools.map((t) => t.name);
+      expect(toolNames).toContain("default_regular_tool");
+      expect(toolNames).toContain("archestra__default_tool");
     });
   });
 });

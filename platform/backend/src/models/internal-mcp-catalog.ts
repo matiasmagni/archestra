@@ -1,6 +1,6 @@
 import { desc, eq, ilike, inArray, or } from "drizzle-orm";
 import db, { schema } from "@/database";
-import { secretManager } from "@/secretsmanager";
+import { secretManager } from "@/secrets-manager";
 import type {
   InsertInternalMcpCatalog,
   InternalMcpCatalog,
@@ -264,7 +264,12 @@ class InternalMcpCatalogModel {
       .from(schema.internalMcpCatalogTable)
       .where(inArray(schema.internalMcpCatalogTable.id, ids));
 
-    return new Map(catalogItems.map((item) => [item.id, item]));
+    const result = new Map<string, InternalMcpCatalog>();
+    for (const item of catalogItems) {
+      result.set(item.id, item);
+    }
+
+    return result;
   }
 
   static async findByName(name: string): Promise<InternalMcpCatalog | null> {

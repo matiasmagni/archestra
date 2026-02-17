@@ -1,16 +1,36 @@
 import {
   AnthropicErrorTypes,
+  BedrockErrorTypes,
   ChatErrorCode,
   ChatErrorMessages,
   type ChatErrorResponse,
   GeminiErrorCodes,
   GeminiErrorReasons,
+  OllamaErrorTypes,
   OpenAIErrorTypes,
   RetryableErrorCodes,
   type SupportedProvider,
+  VllmErrorTypes,
+  ZhipuaiErrorTypes,
 } from "@shared";
-import { APICallError } from "ai";
+import { APICallError, RetryError } from "ai";
 import logger from "@/logging";
+
+// =============================================================================
+// ProviderError — carries a fully-mapped ChatErrorResponse with correct provider
+// =============================================================================
+
+export class ProviderError extends Error {
+  public readonly chatErrorResponse: ChatErrorResponse;
+
+  constructor(chatErrorResponse: ChatErrorResponse) {
+    super(
+      chatErrorResponse.originalError?.message || chatErrorResponse.message,
+    );
+    this.name = "ProviderError";
+    this.chatErrorResponse = chatErrorResponse;
+  }
+}
 
 // =============================================================================
 // Safe Serialization
@@ -76,6 +96,16 @@ interface ParsedOpenAIError {
 }
 
 interface ParsedAnthropicError {
+  type?: string;
+  message?: string;
+}
+
+interface ParsedZhipuaiError {
+  code?: string;
+  message?: string;
+}
+
+interface ParsedBedrockError {
   type?: string;
   message?: string;
 }
@@ -154,6 +184,29 @@ function parseAnthropicError(
       return {
         type: parsed.type,
         message: parsed.message,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Parse Zhipuai error response body.
+ * Zhipuai errors have structure: { error: { code, message } }
+ * Zhipuai uses numeric string codes (e.g., "1211", "1305")
+ * Since Zhipuai is OpenAI-compatible, the error format follows OpenAI structure
+ *
+ * @see https://docs.z.ai/api-reference/api-code#errors
+ */
+function parseZhipuaiError(responseBody: string): ParsedZhipuaiError | null {
+  try {
+    const parsed = JSON.parse(responseBody);
+    if (parsed?.error) {
+      return {
+        code: parsed.error.code,
+        message: parsed.error.message,
       };
     }
     return null;
@@ -365,6 +418,154 @@ function parseGeminiError(responseBody: string): ParsedGeminiError | null {
   }
 }
 
+// Cohere Error Types and Parser
+
+interface ParsedCohereError {
+  message?: string;
+}
+
+/**
+ *
+ *  Errors in Cohere have this structure: { message: string }
+ * @see https://docs.cohere.com/reference/errors
+ */
+function parseCohereError(responseBody: string): ParsedCohereError | null {
+  try {
+    const parsed = JSON.parse(responseBody);
+    if (parsed?.message) {
+      return {
+        message: parsed.message,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function mapCohereErrorToCode(
+  statusCode: number | undefined,
+  _parsedError: ParsedCohereError | null,
+): ChatErrorCode {
+  // Cohere uses standard HTTP status codes
+  return mapStatusCodeToErrorCode(statusCode);
+}
+
+// Bedrock Error Parser and Mapper
+
+/**
+ * Parse AWS Bedrock Converse API error response body.
+ * Bedrock errors have structure: { message: "...", __type: "ThrottlingException" }
+ * Also handles proxy format: { error: { message, type } } with embedded AWS error info.
+ *
+ * @see https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Converse.html
+ */
+function parseBedrockError(responseBody: string): ParsedBedrockError | null {
+  try {
+    const parsed = JSON.parse(responseBody);
+
+    // AWS native format: { message, __type }
+    if (parsed?.__type) {
+      return {
+        type: parsed.__type,
+        message: parsed.message,
+      };
+    }
+
+    // Proxy format: { error: { message, type } }
+    if (parsed?.error) {
+      const errorMessage = parsed.error.message ?? parsed.error.type;
+
+      // Try to extract __type from embedded JSON in the message
+      if (typeof errorMessage === "string") {
+        try {
+          const embedded = JSON.parse(errorMessage);
+          if (embedded?.__type) {
+            return {
+              type: embedded.__type,
+              message: embedded.message ?? errorMessage,
+            };
+          }
+        } catch {
+          // Not JSON, use as-is
+        }
+      }
+
+      return {
+        type: parsed.error.type,
+        message: errorMessage,
+      };
+    }
+
+    // Flat message-only format
+    if (parsed?.message) {
+      return {
+        message: parsed.message,
+      };
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Map AWS Bedrock Converse API error to ChatErrorCode.
+ * Uses __type exception name from the API response.
+ *
+ * Exception types documented at:
+ * @see https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Converse.html
+ *
+ * HTTP Status -> Exception Type mapping:
+ * - 400 -> ValidationException (invalid request)
+ * - 403 -> AccessDeniedException (no access)
+ * - 404 -> ResourceNotFoundException (model not found)
+ * - 408 -> ModelTimeoutException (model timeout)
+ * - 424 -> ModelErrorException (model error)
+ * - 429 -> ThrottlingException / ModelNotReadyException (rate limited)
+ * - 500 -> InternalServerException (internal error)
+ * - 503 -> ServiceUnavailableException (service unavailable)
+ */
+function mapBedrockErrorToCode(
+  statusCode: number | undefined,
+  parsedError: ParsedBedrockError | null,
+): ChatErrorCode {
+  const errorType = parsedError?.type;
+  const errorMessage = parsedError?.message;
+
+  // Check for context window exceeded in message
+  if (errorMessage?.toLowerCase().includes("model_context_window_exceeded")) {
+    return ChatErrorCode.ContextTooLong;
+  }
+
+  if (errorType) {
+    switch (errorType) {
+      case BedrockErrorTypes.ACCESS_DENIED:
+        return ChatErrorCode.PermissionDenied;
+      case BedrockErrorTypes.INTERNAL_SERVER:
+        return ChatErrorCode.ServerError;
+      case BedrockErrorTypes.MODEL_ERROR:
+        return ChatErrorCode.ServerError;
+      case BedrockErrorTypes.MODEL_NOT_READY:
+        return ChatErrorCode.RateLimit;
+      case BedrockErrorTypes.MODEL_TIMEOUT:
+        return ChatErrorCode.ServerError;
+      case BedrockErrorTypes.RESOURCE_NOT_FOUND:
+        return ChatErrorCode.NotFound;
+      case BedrockErrorTypes.SERVICE_UNAVAILABLE:
+        return ChatErrorCode.ServerError;
+      case BedrockErrorTypes.THROTTLING:
+        return ChatErrorCode.RateLimit;
+      case BedrockErrorTypes.VALIDATION:
+        return ChatErrorCode.InvalidRequest;
+    }
+  }
+
+  // Fall back to HTTP status code
+  return mapStatusCodeToErrorCode(statusCode);
+}
+
 // =============================================================================
 // Provider-Specific Error Mappers
 // =============================================================================
@@ -483,6 +684,72 @@ function mapAnthropicErrorToCode(
     return ChatErrorCode.ServerError;
   }
 
+  return mapStatusCodeToErrorCode(statusCode);
+}
+
+/**
+ * Map Zhipuai error to ChatErrorCode.
+ * Uses error.code field from the API response.
+ * Zhipuai uses numeric string codes for different error types.
+ *
+ * Error codes documented at:
+ * @see https://docs.z.ai/api-reference/api-code#errors
+ *
+ * Error categories:
+ * - 500: Internal server error
+ * - 1000-1004: Authentication errors
+ * - 1110-1121: Account errors (inactive, locked, balance)
+ * - 1200-1234: API call errors (parameters, models, network)
+ * - 1300-1309: Policy blocks (content filter, rate limits)
+ */
+function mapZhipuaiErrorToCode(
+  statusCode: number | undefined,
+  parsedError: ParsedZhipuaiError | null,
+): ChatErrorCode {
+  const errorCode = parsedError?.code;
+
+  if (errorCode) {
+    switch (errorCode) {
+      // Authentication errors (1000-1004)
+      case ZhipuaiErrorTypes.AUTHENTICATION_FAILED:
+      case ZhipuaiErrorTypes.INVALID_AUTH_TOKEN:
+      case ZhipuaiErrorTypes.AUTH_TOKEN_EXPIRED:
+        return ChatErrorCode.Authentication;
+
+      // Account/permission errors
+      case ZhipuaiErrorTypes.ACCOUNT_LOCKED:
+      case ZhipuaiErrorTypes.INSUFFICIENT_BALANCE:
+      case ZhipuaiErrorTypes.NO_PERMISSION:
+        return ChatErrorCode.PermissionDenied;
+
+      // Model/API not found
+      case ZhipuaiErrorTypes.MODEL_NOT_FOUND:
+        return ChatErrorCode.NotFound;
+
+      // Rate limiting (multiple variants)
+      case ZhipuaiErrorTypes.RATE_LIMIT:
+      case ZhipuaiErrorTypes.HIGH_CONCURRENCY:
+      case ZhipuaiErrorTypes.HIGH_FREQUENCY:
+        return ChatErrorCode.RateLimit;
+
+      // Content filtering
+      case ZhipuaiErrorTypes.CONTENT_FILTERED:
+        return ChatErrorCode.ContentFiltered;
+
+      // Invalid request parameters
+      case ZhipuaiErrorTypes.INVALID_API_PARAMETERS:
+      case ZhipuaiErrorTypes.INVALID_PARAMETER:
+        return ChatErrorCode.InvalidRequest;
+
+      // Server/network errors
+      case ZhipuaiErrorTypes.INTERNAL_ERROR:
+      case ZhipuaiErrorTypes.NETWORK_ERROR:
+      case ZhipuaiErrorTypes.API_OFFLINE:
+        return ChatErrorCode.ServerError;
+    }
+  }
+
+  // Fall back to HTTP status code
   return mapStatusCodeToErrorCode(statusCode);
 }
 
@@ -624,7 +891,10 @@ function mapStatusCodeToErrorCode(
 type ParsedProviderError =
   | ParsedOpenAIError
   | ParsedAnthropicError
-  | ParsedGeminiError;
+  | ParsedGeminiError
+  | ParsedCohereError
+  | ParsedZhipuaiError
+  | ParsedBedrockError;
 
 type ErrorParser = (responseBody: string) => ParsedProviderError | null;
 type ErrorMapper = (
@@ -665,6 +935,182 @@ function mapGeminiErrorWrapper(
   );
 }
 
+function mapCohereErrorWrapper(
+  statusCode: number | undefined,
+  parsedError: ParsedProviderError | null,
+): ChatErrorCode {
+  return mapCohereErrorToCode(
+    statusCode,
+    parsedError as ParsedCohereError | null,
+  );
+}
+
+function mapZhipuaiErrorWrapper(
+  statusCode: number | undefined,
+  parsedError: ParsedProviderError | null,
+): ChatErrorCode {
+  return mapZhipuaiErrorToCode(
+    statusCode,
+    parsedError as ParsedZhipuaiError | null,
+  );
+}
+
+function mapBedrockErrorWrapper(
+  statusCode: number | undefined,
+  parsedError: ParsedProviderError | null,
+): ChatErrorCode {
+  return mapBedrockErrorToCode(
+    statusCode,
+    parsedError as ParsedBedrockError | null,
+  );
+}
+
+/**
+ * Parse vLLM error response body.
+ * vLLM uses OpenAI-compatible error format: { error: { type, code, message } }
+ *
+ * @see https://docs.vllm.ai/en/latest/features/openai_api.html
+ */
+function parseVllmError(responseBody: string): ParsedOpenAIError | null {
+  // vLLM uses the same error format as OpenAI
+  return parseOpenAIError(responseBody);
+}
+
+/**
+ * Map vLLM error to ChatErrorCode.
+ * vLLM uses OpenAI-compatible error format with some additional codes.
+ *
+ * @see https://docs.vllm.ai/en/latest/features/openai_api.html
+ */
+function mapVllmErrorToCode(
+  statusCode: number | undefined,
+  parsedError: ParsedOpenAIError | null,
+): ChatErrorCode {
+  const errorType = parsedError?.type;
+  const errorCode = parsedError?.code;
+
+  // First check error.code for specific error codes
+  if (errorCode) {
+    if (
+      errorCode === VllmErrorTypes.INVALID_API_KEY ||
+      errorCode === OpenAIErrorTypes.INVALID_API_KEY_CODE
+    ) {
+      return ChatErrorCode.Authentication;
+    }
+    if (
+      errorCode === VllmErrorTypes.CONTEXT_LENGTH_EXCEEDED ||
+      errorCode === OpenAIErrorTypes.CONTEXT_LENGTH_EXCEEDED
+    ) {
+      return ChatErrorCode.ContextTooLong;
+    }
+    if (errorCode === VllmErrorTypes.MODEL_NOT_LOADED) {
+      return ChatErrorCode.NotFound;
+    }
+  }
+
+  // Then check error.type
+  if (errorType) {
+    switch (errorType) {
+      case VllmErrorTypes.AUTHENTICATION:
+      case VllmErrorTypes.INVALID_API_KEY:
+        return ChatErrorCode.Authentication;
+      case VllmErrorTypes.NOT_FOUND:
+        return ChatErrorCode.NotFound;
+      case VllmErrorTypes.SERVER_ERROR:
+      case VllmErrorTypes.SERVICE_UNAVAILABLE:
+        return ChatErrorCode.ServerError;
+      case VllmErrorTypes.INVALID_REQUEST:
+        return ChatErrorCode.InvalidRequest;
+    }
+  }
+
+  // Fall back to OpenAI error mapping (since vLLM is OpenAI-compatible)
+  return mapOpenAIErrorToCode(statusCode, parsedError);
+}
+
+function mapVllmErrorWrapper(
+  statusCode: number | undefined,
+  parsedError: ParsedProviderError | null,
+): ChatErrorCode {
+  return mapVllmErrorToCode(
+    statusCode,
+    parsedError as ParsedOpenAIError | null,
+  );
+}
+
+/**
+ * Parse Ollama error response body.
+ * Ollama uses OpenAI-compatible error format: { error: { type, code, message } }
+ *
+ * @see https://github.com/ollama/ollama/blob/main/docs/openai.md
+ */
+function parseOllamaError(responseBody: string): ParsedOpenAIError | null {
+  // Ollama uses the same error format as OpenAI
+  return parseOpenAIError(responseBody);
+}
+
+/**
+ * Map Ollama error to ChatErrorCode.
+ * Ollama uses OpenAI-compatible error format with some additional codes.
+ *
+ * @see https://github.com/ollama/ollama/blob/main/docs/openai.md
+ */
+function mapOllamaErrorToCode(
+  statusCode: number | undefined,
+  parsedError: ParsedOpenAIError | null,
+): ChatErrorCode {
+  const errorType = parsedError?.type;
+  const errorCode = parsedError?.code;
+
+  // First check error.code for specific error codes
+  if (errorCode) {
+    if (
+      errorCode === OllamaErrorTypes.INVALID_API_KEY ||
+      errorCode === OpenAIErrorTypes.INVALID_API_KEY_CODE
+    ) {
+      return ChatErrorCode.Authentication;
+    }
+    if (
+      errorCode === OllamaErrorTypes.CONTEXT_LENGTH_EXCEEDED ||
+      errorCode === OpenAIErrorTypes.CONTEXT_LENGTH_EXCEEDED
+    ) {
+      return ChatErrorCode.ContextTooLong;
+    }
+    if (errorCode === OllamaErrorTypes.MODEL_NOT_FOUND) {
+      return ChatErrorCode.NotFound;
+    }
+  }
+
+  // Then check error.type
+  if (errorType) {
+    switch (errorType) {
+      case OllamaErrorTypes.AUTHENTICATION:
+      case OllamaErrorTypes.INVALID_API_KEY:
+        return ChatErrorCode.Authentication;
+      case OllamaErrorTypes.NOT_FOUND:
+        return ChatErrorCode.NotFound;
+      case OllamaErrorTypes.SERVER_ERROR:
+      case OllamaErrorTypes.SERVICE_UNAVAILABLE:
+        return ChatErrorCode.ServerError;
+      case OllamaErrorTypes.INVALID_REQUEST:
+        return ChatErrorCode.InvalidRequest;
+    }
+  }
+
+  // Fall back to OpenAI error mapping (since Ollama is OpenAI-compatible)
+  return mapOpenAIErrorToCode(statusCode, parsedError);
+}
+
+function mapOllamaErrorWrapper(
+  statusCode: number | undefined,
+  parsedError: ParsedProviderError | null,
+): ChatErrorCode {
+  return mapOllamaErrorToCode(
+    statusCode,
+    parsedError as ParsedOpenAIError | null,
+  );
+}
+
 /**
  * Registry of provider-specific error parsers.
  * Using Record<SupportedProvider, ...> ensures TypeScript will error
@@ -674,6 +1120,13 @@ const providerParsers: Record<SupportedProvider, ErrorParser> = {
   openai: parseOpenAIError,
   anthropic: parseAnthropicError,
   gemini: parseGeminiError,
+  bedrock: parseBedrockError,
+  cerebras: parseOpenAIError, // Cerebras uses OpenAI-compatible API
+  cohere: parseCohereError,
+  mistral: parseOpenAIError, // Mistral uses OpenAI-compatible API
+  vllm: parseVllmError,
+  ollama: parseOllamaError,
+  zhipuai: parseZhipuaiError,
 };
 
 /**
@@ -685,6 +1138,13 @@ const providerMappers: Record<SupportedProvider, ErrorMapper> = {
   openai: mapOpenAIErrorWrapper,
   anthropic: mapAnthropicErrorWrapper,
   gemini: mapGeminiErrorWrapper,
+  bedrock: mapBedrockErrorWrapper,
+  cerebras: mapOpenAIErrorWrapper, // Cerebras uses OpenAI-compatible API
+  cohere: mapCohereErrorWrapper,
+  mistral: mapOpenAIErrorWrapper, // Mistral uses OpenAI-compatible API
+  vllm: mapVllmErrorWrapper,
+  ollama: mapOllamaErrorWrapper,
+  zhipuai: mapZhipuaiErrorWrapper,
 };
 
 // =============================================================================
@@ -819,7 +1279,42 @@ export function mapProviderError(
   error: unknown,
   provider: SupportedProvider,
 ): ChatErrorResponse {
-  logger.debug({ error, provider }, "[ChatErrorMapper] Mapping provider error");
+  logger.debug({ provider }, "[ChatErrorMapper] Mapping provider error");
+
+  // Handle Vercel AI SDK RetryError - extract the lastError and map it
+  // RetryError wraps errors from retry attempts and contains the last underlying error
+  if (RetryError.isInstance(error)) {
+    const retryError = error as InstanceType<typeof RetryError>;
+    logger.debug(
+      {
+        provider,
+        reason: retryError.reason,
+        errorCount: retryError.errors?.length,
+        lastErrorType:
+          retryError.lastError instanceof Error
+            ? retryError.lastError.name
+            : typeof retryError.lastError,
+      },
+      "[ChatErrorMapper] Unwrapping RetryError to extract lastError",
+    );
+
+    // If we have a lastError, recursively map it to get the actual error details
+    if (retryError.lastError) {
+      const mappedLastError = mapProviderError(retryError.lastError, provider);
+      // Preserve the retry context in the message
+      const originalMessage =
+        mappedLastError.originalError?.message || "Unknown error";
+      return {
+        ...mappedLastError,
+        originalError: mappedLastError.originalError
+          ? {
+              ...mappedLastError.originalError,
+              message: `Failed after ${retryError.errors?.length || "multiple"} attempts. Last error: ${originalMessage}`,
+            }
+          : undefined,
+      };
+    }
+  }
 
   // Get provider-specific parser and mapper
   const parseError = providerParsers[provider];

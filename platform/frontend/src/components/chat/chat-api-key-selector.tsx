@@ -1,10 +1,9 @@
 "use client";
 
+import { providerDisplayNames, type SupportedProvider } from "@shared";
 import { Building2, CheckIcon, Key, User, Users } from "lucide-react";
-import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PromptInputButton } from "@/components/ai-elements/prompt-input";
-import { PROVIDER_CONFIG } from "@/components/chat-api-key-form";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,7 +15,14 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import {
   Popover,
   PopoverContent,
@@ -29,19 +35,31 @@ import {
   type SupportedChatProvider,
   useAvailableChatApiKeys,
 } from "@/lib/chat-settings.query";
-import { cn } from "@/lib/utils";
 
 interface ChatApiKeySelectorProps {
-  /** Conversation ID for persisting selection */
-  conversationId: string;
-  /** Currently selected model (to filter API keys by provider) */
-  currentProvider?: SupportedChatProvider;
+  /** Conversation ID for persisting selection (optional for initial chat) */
+  conversationId?: string;
   /** Current Conversation Chat API key ID set on the backend */
   currentConversationChatApiKeyId: string | null;
   /** Whether the selector should be disabled */
   disabled?: boolean;
   /** Number of messages in current conversation (for mid-conversation warning) */
   messageCount?: number;
+  /** Callback for initial chat mode when no conversationId is available */
+  onApiKeyChange?: (apiKeyId: string) => void;
+  /** Current provider (derived from selected model) - used for auto-selection */
+  currentProvider?: SupportedChatProvider;
+  /** Callback when user explicitly selects a key with different provider */
+  onProviderChange?: (
+    provider: SupportedChatProvider,
+    apiKeyId: string,
+  ) => void;
+  /** Callback when the selector opens or closes */
+  onOpenChange?: (open: boolean) => void;
+  /** Whether models are still loading - don't render until models are loaded */
+  isModelsLoading?: boolean;
+  /** Agent's configured LLM API key ID - included in available keys even if user lacks direct access */
+  agentLlmApiKeyId?: string | null;
 }
 
 const SCOPE_ICONS: Record<ChatApiKeyScope, React.ReactNode> = {
@@ -50,6 +68,9 @@ const SCOPE_ICONS: Record<ChatApiKeyScope, React.ReactNode> = {
   org_wide: <Building2 className="h-3 w-3" />,
 };
 
+// Note: This stores the API key's database ID (UUID), NOT the actual API key secret.
+// The actual API key value is never exposed to the frontend - it's stored securely on the server.
+// This ID is just a reference to select which key configuration to use, similar to a userId.
 const LOCAL_STORAGE_KEY = "selected-chat-api-key-id";
 
 /**
@@ -58,18 +79,64 @@ const LOCAL_STORAGE_KEY = "selected-chat-api-key-id";
  */
 export function ChatApiKeySelector({
   conversationId,
-  currentProvider,
   currentConversationChatApiKeyId,
   disabled = false,
   messageCount = 0,
+  onApiKeyChange,
+  currentProvider,
+  onProviderChange,
+  onOpenChange,
+  isModelsLoading = false,
+  agentLlmApiKeyId,
 }: ChatApiKeySelectorProps) {
-  const { data: availableKeys = [], isLoading } =
-    useAvailableChatApiKeys(currentProvider);
+  // Fetch ALL API keys (not filtered by provider) so user can switch providers
+  // Include agent's configured key even if user doesn't have direct access
+  const { data: availableKeys = [], isLoading: isLoadingKeys } =
+    useAvailableChatApiKeys({
+      includeKeyId: agentLlmApiKeyId,
+    });
+
+  // Combined loading state - wait for both API keys and models
+  const isLoading = isLoadingKeys || isModelsLoading;
   const updateConversationMutation = useUpdateConversation();
   const [pendingKeyId, setPendingKeyId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const handleOpenChange = (newOpen: boolean) => {
+    setOpen(newOpen);
+    onOpenChange?.(newOpen);
+  };
+  // Track if we've already auto-selected to prevent infinite loops
+  const hasAutoSelectedRef = useRef(false);
 
-  // Group keys by scope
+  // Group keys by provider for display
+  const keysByProvider = useMemo(() => {
+    const grouped: Record<SupportedChatProvider, ChatApiKey[]> = {} as Record<
+      SupportedChatProvider,
+      ChatApiKey[]
+    >;
+
+    for (const key of availableKeys) {
+      if (!grouped[key.provider]) {
+        grouped[key.provider] = [];
+      }
+      grouped[key.provider].push(key);
+    }
+
+    return grouped;
+  }, [availableKeys]);
+
+  // Get available providers sorted (current provider first)
+  const availableProviders = useMemo(() => {
+    const providers = Object.keys(keysByProvider) as SupportedChatProvider[];
+    // Sort: current provider first, then alphabetically
+    return providers.sort((a, b) => {
+      if (a === currentProvider) return -1;
+      if (b === currentProvider) return 1;
+      return a.localeCompare(b);
+    });
+  }, [keysByProvider, currentProvider]);
+
+  // Group keys by scope (personal, team, org_wide) for auto-selection priority
   const keysByScope = useMemo(() => {
     const grouped: Record<ChatApiKeyScope, ChatApiKey[]> = {
       personal: [],
@@ -89,50 +156,92 @@ export function ChatApiKeySelector({
     return availableKeys.find((k) => k.id === currentConversationChatApiKeyId);
   }, [availableKeys, currentConversationChatApiKeyId]);
 
+  // Reset auto-select flag when conversation or provider changes
+  // so auto-selection re-runs (e.g., when user picks a model from a different provider)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: we want to reset when conversationId or currentProvider changes
+  useEffect(() => {
+    hasAutoSelectedRef.current = false;
+  }, [conversationId, currentProvider]);
+
   // Auto-select first key when no key is selected or current key is invalid
   // biome-ignore lint/correctness/useExhaustiveDependencies: adding updateConversationMutation as a dependency would cause a infinite loop
   useEffect(() => {
     // Skip if loading or no keys available
     if (isLoading || availableKeys.length === 0) return;
 
-    // Check if current key is valid
+    // Skip if we've already auto-selected to prevent infinite loops
+    if (hasAutoSelectedRef.current) return;
+
+    // Check if current key is valid AND matches the current provider
     const currentKeyValid =
       currentConversationChatApiKey &&
-      availableKeys.some((k) => k.id === currentConversationChatApiKeyId);
+      availableKeys.some((k) => k.id === currentConversationChatApiKeyId) &&
+      currentConversationChatApiKey.provider === currentProvider;
 
-    const keyIdFromLocalStorage = localStorage.getItem(
-      `${LOCAL_STORAGE_KEY}-${currentProvider}`,
-    );
+    // If current key is valid, no need to auto-select
+    if (currentKeyValid) return;
+
+    // Get keys for the current provider (prefer matching provider)
+    const providerKeys = currentProvider
+      ? (keysByProvider[currentProvider] ?? [])
+      : [];
+
+    // Try to find key from localStorage (per-provider key)
+    const localStorageKey = currentProvider
+      ? `${LOCAL_STORAGE_KEY}-${currentProvider}`
+      : LOCAL_STORAGE_KEY;
+    const keyIdFromLocalStorage = localStorage.getItem(localStorageKey);
     const keyFromLocalStorage = keyIdFromLocalStorage
-      ? availableKeys.find((k) => k.id === keyIdFromLocalStorage)
+      ? providerKeys.find((k) => k.id === keyIdFromLocalStorage)
       : null;
+
+    // Priority: localStorage > personal > team > org_wide (within current provider)
+    const personalKeys = providerKeys.filter((k) => k.scope === "personal");
+    const teamKeys = providerKeys.filter((k) => k.scope === "team");
+    const orgWideKeys = providerKeys.filter((k) => k.scope === "org_wide");
+
     const keyToSelect =
       keyFromLocalStorage ||
+      personalKeys[0] ||
+      teamKeys[0] ||
+      orgWideKeys[0] ||
+      // Fall back to any key if no provider-specific key found
       keysByScope.personal[0] ||
       keysByScope.team[0] ||
       keysByScope.org_wide[0];
+
     const keyToSelectValid =
       keyToSelect && availableKeys.some((k) => k.id === keyToSelect.id);
 
-    // Auto-select first key if no valid key is selected
-    if (!currentKeyValid && keyToSelectValid) {
-      updateConversationMutation.mutate({
-        id: conversationId,
-        chatApiKeyId: keyToSelect.id,
-      });
+    // Auto-select key if no valid key is selected
+    if (keyToSelectValid) {
+      // Mark as auto-selected BEFORE calling callbacks to prevent loops
+      hasAutoSelectedRef.current = true;
+
+      if (conversationId) {
+        updateConversationMutation.mutate({
+          id: conversationId,
+          chatApiKeyId: keyToSelect.id,
+        });
+      } else if (onApiKeyChange) {
+        onApiKeyChange(keyToSelect.id);
+      }
     }
   }, [
     availableKeys,
     currentConversationChatApiKeyId,
+    currentConversationChatApiKey,
     isLoading,
     conversationId,
     currentProvider,
+    keysByProvider,
     keysByScope,
+    onApiKeyChange,
   ]);
 
   const handleSelectKey = (keyId: string) => {
     if (keyId === currentConversationChatApiKeyId) {
-      setOpen(false);
+      handleOpenChange(false);
       return;
     }
 
@@ -142,16 +251,38 @@ export function ChatApiKeySelector({
     } else {
       applyKeyChange(keyId);
     }
-    setOpen(false);
+    handleOpenChange(false);
   };
 
   const applyKeyChange = (keyId: string) => {
-    updateConversationMutation.mutate({
-      id: conversationId,
-      chatApiKeyId: keyId,
-    });
-    if (currentProvider) {
-      localStorage.setItem(`${LOCAL_STORAGE_KEY}-${currentProvider}`, keyId);
+    // Find the selected key to get its provider
+    const selectedKey = availableKeys.find((k) => k.id === keyId);
+    const selectedKeyProvider = selectedKey?.provider;
+
+    if (conversationId) {
+      updateConversationMutation.mutate({
+        id: conversationId,
+        chatApiKeyId: keyId,
+      });
+    } else if (onApiKeyChange) {
+      onApiKeyChange(keyId);
+    }
+
+    // Save to localStorage for the selected key's provider
+    if (selectedKeyProvider) {
+      localStorage.setItem(
+        `${LOCAL_STORAGE_KEY}-${selectedKeyProvider}`,
+        keyId,
+      );
+    }
+
+    // If the selected key has a different provider, notify parent to switch model
+    if (
+      selectedKeyProvider &&
+      selectedKeyProvider !== currentProvider &&
+      onProviderChange
+    ) {
+      onProviderChange(selectedKeyProvider, keyId);
     }
   };
 
@@ -165,6 +296,11 @@ export function ChatApiKeySelector({
   const handleCancelChange = () => {
     setPendingKeyId(null);
   };
+
+  // Don't render until models are loaded (prevents flashing)
+  if (isModelsLoading) {
+    return null;
+  }
 
   // If no keys available for this provider
   if (!isLoading && availableKeys.length === 0) {
@@ -183,11 +319,14 @@ export function ChatApiKeySelector({
 
   return (
     <>
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={handleOpenChange}>
         <PopoverTrigger asChild>
-          <PromptInputButton disabled={disabled}>
-            <Key className="h-3.5 w-3.5" />
-            <span className="truncate max-w-[120px]">
+          <PromptInputButton
+            disabled={disabled}
+            className="max-w-[220px] min-w-0"
+          >
+            <Key className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate flex-1 text-left">
               {currentConversationChatApiKey
                 ? getKeyDisplayName(currentConversationChatApiKey)
                 : isLoading
@@ -196,112 +335,60 @@ export function ChatApiKeySelector({
             </span>
           </PromptInputButton>
         </PopoverTrigger>
-        <PopoverContent className="w-64 p-2" align="start">
-          <div className="space-y-2">
-            {/* Personal keys */}
-            {keysByScope.personal.length > 0 && (
-              <>
-                <div className="px-2 pt-1 text-xs font-medium text-muted-foreground flex items-center gap-1">
-                  {SCOPE_ICONS.personal}
-                  <span>Personal</span>
-                </div>
-                {keysByScope.personal.map((key) => (
-                  <Button
-                    key={key.id}
-                    variant="ghost"
-                    className={cn(
-                      "w-full justify-start gap-2 px-2 py-1.5 h-auto text-sm",
-                      currentConversationChatApiKeyId === key.id && "bg-accent",
-                    )}
-                    onClick={() => handleSelectKey(key.id)}
-                  >
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <ProviderIcon src={PROVIDER_CONFIG[key.provider]?.icon} />
-                      <span className="truncate">{key.name}</span>
-                    </div>
-                    {currentConversationChatApiKeyId === key.id && (
-                      <CheckIcon className="h-4 w-4 shrink-0" />
-                    )}
-                  </Button>
-                ))}
-              </>
-            )}
-
-            {/* Team keys */}
-            {keysByScope.team.length > 0 && (
-              <>
-                <div className="px-2 pt-1 text-xs font-medium text-muted-foreground flex items-center gap-1">
-                  {SCOPE_ICONS.team}
-                  <span>Team</span>
-                </div>
-                {keysByScope.team.map((key) => (
-                  <Button
-                    key={key.id}
-                    variant="ghost"
-                    className={cn(
-                      "w-full justify-start gap-2 px-2 py-1.5 h-auto text-sm",
-                      currentConversationChatApiKeyId === key.id && "bg-accent",
-                    )}
-                    onClick={() => handleSelectKey(key.id)}
-                  >
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <ProviderIcon src={PROVIDER_CONFIG[key.provider]?.icon} />
-                      <div className="truncate">
-                        <span>{key.name}</span>
-                        {key.teamName && (
+        <PopoverContent className="w-80 p-0" align="start">
+          <Command>
+            <CommandInput placeholder="Search API Keys..." />
+            <CommandList>
+              <CommandEmpty>No API keys found.</CommandEmpty>
+              {/* Group keys by provider */}
+              {availableProviders.map((provider) => (
+                <CommandGroup
+                  key={provider}
+                  heading={
+                    providerDisplayNames[provider as SupportedProvider] ??
+                    provider
+                  }
+                >
+                  {keysByProvider[provider]?.map((key) => (
+                    <CommandItem
+                      key={key.id}
+                      value={`${provider} ${key.name} ${key.teamName || ""}`}
+                      onSelect={() => handleSelectKey(key.id)}
+                      className="cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        {SCOPE_ICONS[key.scope]}
+                        <span className="truncate">{key.name}</span>
+                        {key.scope === "team" && key.teamName && (
                           <Badge
                             variant="outline"
-                            className="ml-1 text-[10px] px-1 py-0"
+                            className="text-[10px] px-1 py-0"
                           >
                             {key.teamName}
                           </Badge>
                         )}
                       </div>
-                    </div>
-                    {currentConversationChatApiKeyId === key.id && (
-                      <CheckIcon className="h-4 w-4 shrink-0" />
-                    )}
-                  </Button>
-                ))}
-              </>
-            )}
-
-            {/* Organization keys */}
-            {keysByScope.org_wide.length > 0 && (
-              <>
-                <div className="px-2 pt-1 text-xs font-medium text-muted-foreground flex items-center gap-1">
-                  {SCOPE_ICONS.org_wide}
-                  <span>Organization</span>
-                </div>
-                {keysByScope.org_wide.map((key) => (
-                  <Button
-                    key={key.id}
-                    variant="ghost"
-                    className={cn(
-                      "w-full justify-start gap-2 px-2 py-1.5 h-auto text-sm",
-                      currentConversationChatApiKeyId === key.id && "bg-accent",
-                    )}
-                    onClick={() => handleSelectKey(key.id)}
-                  >
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <ProviderIcon src={PROVIDER_CONFIG[key.provider]?.icon} />
-                      <span className="truncate">{key.name}</span>
-                    </div>
-                    {currentConversationChatApiKeyId === key.id && (
-                      <CheckIcon className="h-4 w-4 shrink-0" />
-                    )}
-                  </Button>
-                ))}
-              </>
-            )}
-          </div>
+                      {currentConversationChatApiKeyId === key.id && (
+                        <CheckIcon className="h-4 w-4 shrink-0" />
+                      )}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              ))}
+            </CommandList>
+          </Command>
         </PopoverContent>
       </Popover>
 
       {/* Mid-conversation warning dialog */}
       <AlertDialog
         open={!!pendingKeyId}
-        onOpenChange={(open) => !open && handleCancelChange()}
+        onOpenChange={(open) => {
+          if (!open) {
+            handleCancelChange();
+            onOpenChange?.(false);
+          }
+        }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -323,20 +410,5 @@ export function ChatApiKeySelector({
         </AlertDialogContent>
       </AlertDialog>
     </>
-  );
-}
-
-function ProviderIcon({ src }: { src?: string }) {
-  if (!src) {
-    return null;
-  }
-  return (
-    <Image
-      src={src}
-      alt={"Provider icon"}
-      width={16}
-      height={16}
-      className="rounded shrink-0 dark:invert"
-    />
   );
 }

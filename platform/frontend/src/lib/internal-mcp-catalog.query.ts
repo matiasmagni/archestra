@@ -1,22 +1,22 @@
 import { archestraApiSdk, type archestraApiTypes } from "@shared";
-import {
-  useMutation,
-  useQueryClient,
-  useSuspenseQuery,
-} from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 const {
   createInternalMcpCatalogItem,
   deleteInternalMcpCatalogItem,
+  getDeploymentYamlPreview,
   getInternalMcpCatalog,
+  getInternalMcpCatalogTools,
+  resetDeploymentYaml,
   updateInternalMcpCatalogItem,
+  validateDeploymentYaml,
 } = archestraApiSdk;
 
 export function useInternalMcpCatalog(params?: {
   initialData?: archestraApiTypes.GetInternalMcpCatalogResponses["200"];
 }) {
-  return useSuspenseQuery({
+  return useQuery({
     queryKey: ["mcp-catalog"],
     queryFn: async () => (await getInternalMcpCatalog()).data ?? [],
     initialData: params?.initialData,
@@ -88,6 +88,97 @@ export function useDeleteInternalMcpCatalogItem() {
     onError: (error) => {
       console.error("Delete error:", error);
       toast.error("Failed to delete catalog item");
+    },
+  });
+}
+
+export type CatalogTool =
+  archestraApiTypes.GetInternalMcpCatalogToolsResponses["200"][number];
+
+/**
+ * Fetch tools for a catalog item by catalog ID (raw function for use with useQueries).
+ */
+export async function fetchCatalogTools(
+  catalogId: string,
+): Promise<CatalogTool[]> {
+  try {
+    const response = await getInternalMcpCatalogTools({
+      path: { id: catalogId },
+    });
+    return response.data ?? [];
+  } catch (error) {
+    console.error("Failed to fetch catalog tools:", error);
+    return [];
+  }
+}
+
+/**
+ * Fetch tools for a catalog item by catalog ID.
+ * Used for builtin servers (like Archestra) that don't have a traditional MCP server installation.
+ */
+export function useCatalogTools(catalogId: string | null) {
+  return useQuery({
+    queryKey: ["mcp-catalog", catalogId, "tools"],
+    queryFn: async () => {
+      if (!catalogId) return [];
+      return fetchCatalogTools(catalogId);
+    },
+    enabled: !!catalogId,
+  });
+}
+
+/**
+ * Fetch deployment YAML template preview for a catalog item.
+ */
+export function useGetDeploymentYamlPreview(catalogId: string | null) {
+  return useQuery({
+    queryKey: ["mcp-catalog", catalogId, "deployment-yaml-preview"],
+    queryFn: async () => {
+      if (!catalogId) return null;
+      const response = await getDeploymentYamlPreview({
+        path: { id: catalogId },
+      });
+      return response.data;
+    },
+    enabled: !!catalogId,
+  });
+}
+
+/**
+ * Validate deployment YAML template.
+ */
+export function useValidateDeploymentYaml() {
+  return useMutation({
+    mutationFn: async (params: { yaml: string }) => {
+      const response = await validateDeploymentYaml({ body: params });
+      return response.data;
+    },
+  });
+}
+
+/**
+ * Reset deployment YAML to default by clearing the custom YAML from the database.
+ * Returns the freshly generated default YAML.
+ */
+export function useResetDeploymentYaml() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (catalogId: string) => {
+      const response = await resetDeploymentYaml({ path: { id: catalogId } });
+      return response.data;
+    },
+    onSuccess: (_data, catalogId) => {
+      // Invalidate the main catalog query to refresh the form data
+      queryClient.invalidateQueries({ queryKey: ["mcp-catalog"] });
+      // Invalidate the preview query
+      queryClient.invalidateQueries({
+        queryKey: ["mcp-catalog", catalogId, "deployment-yaml-preview"],
+      });
+      toast.success("Deployment YAML reset to default");
+    },
+    onError: (error) => {
+      console.error("Reset deployment YAML error:", error);
+      toast.error("Failed to reset deployment YAML");
     },
   });
 }

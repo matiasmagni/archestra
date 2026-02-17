@@ -12,12 +12,17 @@ export function TruncatedText({
   className,
   tooltipContentProps,
   tooltipProps,
+  showTooltip = true,
+  noWrap = true,
 }: {
   message: string | undefined;
   maxLength?: number;
   className?: string;
   tooltipProps?: ComponentProps<typeof Tooltip>;
   tooltipContentProps?: ComponentProps<typeof TooltipContent>;
+  showTooltip?: boolean;
+  /** Prevent text from wrapping. Defaults to true. */
+  noWrap?: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -39,11 +44,12 @@ export function TruncatedText({
       className={cn(
         isTruncated ? "relative pr-8" : "",
         "overflow-hidden group",
+        noWrap && "whitespace-nowrap",
         className,
       )}
     >
-      {!isTruncated && <span>{displayText}</span>}
-      {isTruncated && (
+      {(!isTruncated || !showTooltip) && <span>{displayText}</span>}
+      {isTruncated && showTooltip && (
         <Tooltip
           open={isOpen}
           onOpenChange={handleOpenChange}

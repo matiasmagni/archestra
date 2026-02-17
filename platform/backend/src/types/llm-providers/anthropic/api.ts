@@ -93,6 +93,14 @@ export const MessagesHeadersSchema = z
       .optional()
       .describe("The user agent of the client"),
     "anthropic-version": z.string(),
-    "x-api-key": z.string(),
+    "anthropic-beta": z
+      .string()
+      .optional()
+      .describe("Beta features to enable (comma-separated)"),
+    "x-api-key": z.string().optional(),
+    authorization: z
+      .string()
+      .optional()
+      .describe("Authorization header (Bearer token for OAuth)"),
   })
   .describe(`https://docs.claude.com/en/api/messages#parameter-anthropic-beta`);

@@ -3,21 +3,23 @@
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ArchestraArchitectureDiagram } from "@/components/archestra-architecture-diagram";
+import type { ArchitectureTabType } from "@/components/architecture-diagram/architecture-diagram";
 import { ConnectionOptions } from "@/components/connection-options";
 import { PageLayout } from "@/components/page-layout";
-import { useDefaultProfile } from "@/lib/agent.query";
+import { useDefaultLlmProxy, useDefaultMcpGateway } from "@/lib/agent.query";
 
 export default function ConnectionPage() {
-  const { data: defaultProfile } = useDefaultProfile();
+  const { data: defaultMcpGateway } = useDefaultMcpGateway();
+  const { data: defaultLlmProxy } = useDefaultLlmProxy();
   const searchParams = useSearchParams();
   const tabParam = searchParams.get("tab");
 
-  const [activeTab, setActiveTab] = useState<"proxy" | "mcp">(
-    tabParam === "mcp" ? "mcp" : "proxy",
+  const [activeTab, setActiveTab] = useState<ArchitectureTabType>(
+    tabParam === "mcp" ? "mcp" : tabParam === "a2a" ? "a2a" : "proxy",
   );
 
   useEffect(() => {
-    if (tabParam === "mcp" || tabParam === "proxy") {
+    if (tabParam === "mcp" || tabParam === "proxy" || tabParam === "a2a") {
       setActiveTab(tabParam);
     }
   }, [tabParam]);
@@ -25,18 +27,22 @@ export default function ConnectionPage() {
   return (
     <PageLayout
       title="Connect"
-      description="Connect your AI agents through LLM Gateway or MCP Gateway"
+      description="Connect your AI agents through LLM Proxy or MCP Gateway"
     >
       <div className="space-y-8">
         {/* Architecture & Connection */}
         <div>
-          <div className="grid grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
             <div>
-              <ArchestraArchitectureDiagram activeTab={activeTab} />
+              <ArchestraArchitectureDiagram
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
+              />
             </div>
             <div>
               <ConnectionOptions
-                agentId={defaultProfile?.id}
+                mcpGatewayId={defaultMcpGateway?.id}
+                llmProxyId={defaultLlmProxy?.id}
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
               />

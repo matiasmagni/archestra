@@ -2,20 +2,17 @@
 
 import type { archestraApiTypes } from "@shared";
 import { useQueryClient } from "@tanstack/react-query";
-import { Suspense, useEffect, useState } from "react";
-import { LoadingSpinner } from "@/components/loading";
+import { useEffect, useState } from "react";
 import {
   prefetchOperators,
   prefetchToolInvocationPolicies,
   prefetchToolResultPolicies,
 } from "@/lib/policy.query";
+import type { ToolWithAssignmentsData } from "@/lib/tool.query";
 import { ErrorBoundary } from "../_parts/error-boundary";
 import { AssignedToolsTable } from "./_parts/assigned-tools-table";
 import { ToolDetailsDialog } from "./_parts/tool-details-dialog";
 import type { ToolsInitialData } from "./page";
-
-type ProfileToolData =
-  archestraApiTypes.GetAllAgentToolsResponses["200"]["data"][number];
 
 export function ToolsClient({
   initialData,
@@ -34,9 +31,7 @@ export function ToolsClient({
   return (
     <div className="w-full h-full">
       <ErrorBoundary>
-        <Suspense fallback={<LoadingSpinner className="mt-[30vh]" />}>
-          <ToolsList initialData={initialData} />
-        </Suspense>
+        <ToolsList initialData={initialData} />
       </ErrorBoundary>
     </div>
   );
@@ -45,7 +40,7 @@ export function ToolsClient({
 function ToolsList({ initialData }: { initialData?: ToolsInitialData }) {
   const queryClient = useQueryClient();
   const [selectedToolForDialog, setSelectedToolForDialog] =
-    useState<ProfileToolData | null>(null);
+    useState<ToolWithAssignmentsData | null>(null);
 
   // Sync selected tool with cache updates
   useEffect(() => {
@@ -54,10 +49,10 @@ function ToolsList({ initialData }: { initialData?: ToolsInitialData }) {
     const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
       if (
         event.type === "updated" &&
-        event.query.queryKey[0] === "agent-tools"
+        event.query.queryKey[0] === "tools-with-assignments"
       ) {
         const cachedData = queryClient.getQueryData<
-          archestraApiTypes.GetAllAgentToolsResponses["200"]
+          archestraApiTypes.GetToolsWithAssignmentsResponses["200"]
         >(event.query.queryKey);
 
         const updatedTool = cachedData?.data.find(
@@ -81,7 +76,7 @@ function ToolsList({ initialData }: { initialData?: ToolsInitialData }) {
       />
 
       <ToolDetailsDialog
-        agentTool={selectedToolForDialog}
+        tool={selectedToolForDialog}
         open={!!selectedToolForDialog}
         onOpenChange={(open: boolean) =>
           !open && setSelectedToolForDialog(null)

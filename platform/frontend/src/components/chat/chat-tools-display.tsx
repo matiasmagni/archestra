@@ -2,10 +2,12 @@
 
 import {
   ARCHESTRA_MCP_SERVER_NAME,
-  MCP_SERVER_TOOL_NAME_SEPARATOR,
+  DEFAULT_ARCHESTRA_TOOL_NAMES,
+  isAgentTool,
+  parseFullToolName,
 } from "@shared";
-import { Info, Loader2, Plus, Settings, X } from "lucide-react";
-import { useState } from "react";
+import { Loader2, Plus, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PromptInputButton } from "@/components/ai-elements/prompt-input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -15,88 +17,160 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-  useChatProfileMcpTools,
   useConversationEnabledTools,
   useProfileToolsWithIds,
   useUpdateConversationEnabledTools,
 } from "@/lib/chat.query";
+import {
+  addPendingAction,
+  applyPendingActions,
+  getPendingActions,
+  type PendingToolAction,
+} from "@/lib/pending-tool-state";
 import { Button } from "../ui/button";
-import { ManageChatToolsDialog } from "./manage-chat-tools-dialog";
 
 interface ChatToolsDisplayProps {
   agentId: string;
-  conversationId: string;
+  /** Required for enable/disable functionality. Optional for read-only display. */
+  conversationId?: string;
   className?: string;
+  /** When true, hides enable/disable buttons and shows all tools as enabled */
+  readOnly?: boolean;
 }
 
 /**
  * Display tools enabled for a chat conversation with ability to disable them.
  * Use this component for chat-level tool management (enable/disable).
  * For profile-level tool assignment, use McpToolsDisplay instead.
+ *
+ * When no conversation exists, pending actions are stored in localStorage
+ * and applied when the conversation is created via first message.
  */
 export function ChatToolsDisplay({
   agentId,
   conversationId,
   className,
+  readOnly = false,
 }: ChatToolsDisplayProps) {
-  const { data: mcpTools = [], isLoading } = useChatProfileMcpTools(agentId);
-  const { data: profileTools = [] } = useProfileToolsWithIds(agentId);
-
-  // State for manage tools dialog
-  const [isManageToolsDialogOpen, setIsManageToolsDialogOpen] = useState(false);
-
-  const [initialDisabledToolIds, setInitialDisabledToolIds] = useState<
-    string[]
-  >([]);
+  const { data: profileTools = [], isLoading } =
+    useProfileToolsWithIds(agentId);
 
   // State for tooltip open state per server
-  const [openTooltips, setOpenTooltips] = useState<Record<string, boolean>>({});
-  // Track hover state to prevent closing when hovering over nested tooltips
-  const [hoveringTooltip, setHoveringTooltip] = useState<
-    Record<string, boolean>
-  >({});
+  const [openTooltip, setOpenTooltip] = useState<string | null>(null);
+  const tooltipContentRef = useRef<HTMLDivElement | null>(null);
 
-  // Fetch enabled tools for the conversation
-  const { data: enabledToolsData } =
-    useConversationEnabledTools(conversationId);
+  // Local pending actions for display (synced with localStorage)
+  const [localPendingActions, setLocalPendingActions] = useState<
+    PendingToolAction[]
+  >([]);
+
+  // Load pending actions from localStorage on mount and when context changes
+  useEffect(() => {
+    if (!conversationId) {
+      const actions = getPendingActions(agentId);
+      setLocalPendingActions(actions);
+    } else {
+      setLocalPendingActions([]);
+    }
+  }, [agentId, conversationId]);
+
+  // Handle click outside to close tooltips
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+
+      // Check if click is within the main tooltip content
+      if (tooltipContentRef.current?.contains(target)) {
+        return;
+      }
+
+      // Check if click is on any of the tool buttons
+      const clickedButton = (target as HTMLElement).closest(
+        "[data-tool-button]",
+      );
+      if (clickedButton) {
+        return;
+      }
+
+      // If we got here, click was outside everything
+      setOpenTooltip(null);
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  // Fetch enabled tools for the conversation (skip in readOnly mode or without conversationId)
+  const { data: enabledToolsData } = useConversationEnabledTools(
+    readOnly || !conversationId ? undefined : conversationId,
+  );
   const enabledToolIds = enabledToolsData?.enabledToolIds ?? [];
   const hasCustomSelection = enabledToolsData?.hasCustomSelection ?? false;
 
   // Mutation for updating enabled tools
   const updateEnabledTools = useUpdateConversationEnabledTools();
 
-  // Handler to open manage tools dialog with specific tools to disable
-  const handleOpenManageToolsDialog = (toolIdsToDisable: string[]) => {
-    setInitialDisabledToolIds(toolIdsToDisable);
-    setIsManageToolsDialogOpen(true);
-  };
+  // Default enabled tools logic (matches backend ConversationModel.create):
+  // - Disable all Archestra tools (archestra__*) by default
+  // - Except archestra__todo_write and archestra__artifact_write which stay enabled
+  // - All other tools (non-Archestra, agent delegation, global) remain enabled
+  const defaultEnabledToolIds = useMemo(() => {
+    return profileTools
+      .filter(
+        (tool) =>
+          !tool.name.startsWith("archestra__") ||
+          DEFAULT_ARCHESTRA_TOOL_NAMES.includes(tool.name),
+      )
+      .map((t) => t.id);
+  }, [profileTools]);
 
-  // Create a map of tool name -> tool ID for quick lookup
-  const toolNameToId: Record<string, string> = {};
-  for (const tool of profileTools) {
-    toolNameToId[tool.name] = tool.id;
-  }
+  // Compute current enabled tools:
+  // - If conversation exists with custom selection, use that
+  // - If conversation exists without custom selection, use defaults
+  // - If no conversation, apply pending actions to defaults
+  const currentEnabledToolIds = useMemo(() => {
+    if (conversationId && hasCustomSelection) {
+      return enabledToolIds;
+    }
+
+    // Start with defaults
+    const baseIds = defaultEnabledToolIds;
+
+    // If no conversation, apply pending actions for display
+    if (!conversationId && localPendingActions.length > 0) {
+      return applyPendingActions(baseIds, localPendingActions);
+    }
+
+    return baseIds;
+  }, [
+    conversationId,
+    hasCustomSelection,
+    enabledToolIds,
+    defaultEnabledToolIds,
+    localPendingActions,
+  ]);
 
   // Create enabled tool IDs set for quick lookup
-  const enabledToolIdsSet = new Set(enabledToolIds);
+  const enabledToolIdsSet = new Set(currentEnabledToolIds);
 
-  // Filter tools based on enabled status (only when custom selection exists)
-  let displayedTools = mcpTools;
-  if (hasCustomSelection && enabledToolIds.length > 0) {
-    displayedTools = mcpTools.filter((tool) => {
-      const toolId = toolNameToId[tool.name];
-      return toolId && enabledToolIdsSet.has(toolId);
-    });
-  }
+  // Agent tools are displayed separately in AgentToolsDisplay
+  type ToolItem = {
+    id: string;
+    name: string;
+    description: string | null;
+  };
 
-  // Group tools by MCP server name (everything before the last __)
-  const groupedTools: Record<string, typeof displayedTools> = {};
-  for (const tool of displayedTools) {
-    const parts = tool.name.split(MCP_SERVER_TOOL_NAME_SEPARATOR);
-    const serverName =
-      parts.length > 1
-        ? parts.slice(0, -1).join(MCP_SERVER_TOOL_NAME_SEPARATOR)
-        : "default";
+  // Use useMemo to prevent recalculating on every render
+  const allTools: ToolItem[] = useMemo(() => {
+    return profileTools.filter((tool) => !isAgentTool(tool.name));
+  }, [profileTools]);
+
+  // Group ALL tools by MCP server name (don't filter by enabled status)
+  const groupedTools: Record<string, ToolItem[]> = {};
+  for (const tool of allTools) {
+    const serverName = parseFullToolName(tool.name).serverName ?? "default";
     if (!groupedTools[serverName]) {
       groupedTools[serverName] = [];
     }
@@ -113,13 +187,14 @@ export function ChatToolsDisplay({
   // Handle enabling a tool
   const handleEnableTool = (toolId: string, event: React.MouseEvent) => {
     event.stopPropagation();
-    let newEnabledToolIds: string[];
-    if (hasCustomSelection) {
-      newEnabledToolIds = [...enabledToolIds, toolId];
-    } else {
-      // If no custom selection, get all tool IDs and add this one
-      newEnabledToolIds = [...profileTools.map((t) => t.id), toolId];
+    if (!conversationId) {
+      // Store in localStorage and update local state
+      const action: PendingToolAction = { type: "enable", toolId };
+      addPendingAction(action, agentId);
+      setLocalPendingActions((prev) => [...prev, action]);
+      return;
     }
+    const newEnabledToolIds = [...currentEnabledToolIds, toolId];
     updateEnabledTools.mutateAsync({
       conversationId,
       toolIds: newEnabledToolIds,
@@ -129,15 +204,16 @@ export function ChatToolsDisplay({
   // Handle disabling a tool
   const handleDisableTool = (toolId: string, event: React.MouseEvent) => {
     event.stopPropagation();
-    let newEnabledToolIds: string[];
-    if (hasCustomSelection) {
-      newEnabledToolIds = enabledToolIds.filter((id) => id !== toolId);
-    } else {
-      // If no custom selection, get all tool IDs except this one
-      newEnabledToolIds = profileTools
-        .map((t) => t.id)
-        .filter((id) => id !== toolId);
+    if (!conversationId) {
+      // Store in localStorage and update local state
+      const action: PendingToolAction = { type: "disable", toolId };
+      addPendingAction(action, agentId);
+      setLocalPendingActions((prev) => [...prev, action]);
+      return;
     }
+    const newEnabledToolIds = currentEnabledToolIds.filter(
+      (id) => id !== toolId,
+    );
     updateEnabledTools.mutateAsync({
       conversationId,
       toolIds: newEnabledToolIds,
@@ -147,15 +223,16 @@ export function ChatToolsDisplay({
   // Handle disabling all enabled tools for a server
   const handleDisableAll = (toolIds: string[], event: React.MouseEvent) => {
     event.stopPropagation();
-    let newEnabledToolIds: string[];
-    if (hasCustomSelection) {
-      newEnabledToolIds = enabledToolIds.filter((id) => !toolIds.includes(id));
-    } else {
-      // If no custom selection, get all tool IDs except these
-      newEnabledToolIds = profileTools
-        .map((t) => t.id)
-        .filter((id) => !toolIds.includes(id));
+    if (!conversationId) {
+      // Store in localStorage and update local state
+      const action: PendingToolAction = { type: "disableAll", toolIds };
+      addPendingAction(action, agentId);
+      setLocalPendingActions((prev) => [...prev, action]);
+      return;
     }
+    const newEnabledToolIds = currentEnabledToolIds.filter(
+      (id) => !toolIds.includes(id),
+    );
     updateEnabledTools.mutateAsync({
       conversationId,
       toolIds: newEnabledToolIds,
@@ -165,102 +242,60 @@ export function ChatToolsDisplay({
   // Handle enabling all disabled tools for a server
   const handleEnableAll = (toolIds: string[], event: React.MouseEvent) => {
     event.stopPropagation();
-    let newEnabledToolIds: string[];
-    if (hasCustomSelection) {
-      newEnabledToolIds = [...enabledToolIds, ...toolIds];
-    } else {
-      // If no custom selection, get all tool IDs and add these
-      newEnabledToolIds = [...profileTools.map((t) => t.id), ...toolIds];
+    if (!conversationId) {
+      // Store in localStorage and update local state
+      const action: PendingToolAction = { type: "enableAll", toolIds };
+      addPendingAction(action, agentId);
+      setLocalPendingActions((prev) => [...prev, action]);
+      return;
     }
+    const newEnabledToolIds = [
+      ...new Set([...currentEnabledToolIds, ...toolIds]),
+    ];
     updateEnabledTools.mutateAsync({
       conversationId,
       toolIds: newEnabledToolIds,
     });
   };
 
-  // Handle opening manage dialog with no pre-disabled tools
-  const handleOpenManageDialog = () => {
-    handleOpenManageToolsDialog([]);
-  };
-
   // Render a single tool row
   const renderToolRow = (
-    tool: { id: string; name: string; description: string | null },
+    tool: ToolItem,
     isDisabled: boolean,
-    currentServerName: string,
+    _currentServerName: string,
   ) => {
-    const parts = tool.name.split(MCP_SERVER_TOOL_NAME_SEPARATOR);
-    const toolName = parts.length > 1 ? parts[parts.length - 1] : tool.name;
+    const { toolName: parsedToolName } = parseFullToolName(tool.name);
+    const toolName = parsedToolName || tool.name;
     const borderColor = isDisabled ? "border-red-500" : "border-green-500";
 
     return (
-      <div
-        key={tool.id}
-        className={`flex items-center gap-2 border-l-2 ${borderColor} pl-2 ml-1 py-1`}
-      >
-        <span className="font-medium text-sm">{toolName}</span>
-        {tool.description && (
-          <Tooltip delayDuration={0}>
-            <TooltipTrigger asChild>
+      <div key={tool.id} className={`border-l-2 ${borderColor} pl-2 ml-1 py-1`}>
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-sm">{toolName}</span>
+          <div className="flex-1" />
+          {!readOnly &&
+            (isDisabled ? (
               <Button
-                type="button"
                 variant="ghost"
                 size="sm"
-                className="h-4 w-4 p-0 cursor-help"
-                onMouseEnter={() => {
-                  setHoveringTooltip((prev) => ({
-                    ...prev,
-                    [currentServerName]: true,
-                  }));
-                }}
+                className="h-6 w-6 p-0 rounded-full"
+                onClick={(e) => handleEnableTool(tool.id, e)}
+                title={`Enable ${toolName} for this chat`}
               >
-                <Info className="h-4 w-4 text-muted-foreground" />
+                <Plus className="h-3 w-3" />
               </Button>
-            </TooltipTrigger>
-            <TooltipContent
-              className="max-w-[300px]"
-              onMouseEnter={() => {
-                setHoveringTooltip((prev) => ({
-                  ...prev,
-                  [currentServerName]: true,
-                }));
-              }}
-              onMouseLeave={() => {
-                // Small delay to allow moving back to main tooltip
-                setTimeout(() => {
-                  setHoveringTooltip((prev) => ({
-                    ...prev,
-                    [currentServerName]: false,
-                  }));
-                }, 30);
-              }}
-            >
-              {tool.description}
-            </TooltipContent>
-          </Tooltip>
-        )}
-        <div className="flex-1" />
-        {isDisabled ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 w-6 p-0 rounded-full"
-            onClick={(e) => handleEnableTool(tool.id, e)}
-            title={`Enable ${toolName} for this chat`}
-          >
-            <Plus className="h-3 w-3" />
-          </Button>
-        ) : (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 w-6 p-0 hover:text-destructive"
-            onClick={(e) => handleDisableTool(tool.id, e)}
-            title={`Disable ${toolName} for this chat`}
-          >
-            <X className="h-3 w-3" />
-          </Button>
-        )}
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0 hover:text-destructive"
+                onClick={(e) => handleDisableTool(tool.id, e)}
+                title={`Disable ${toolName} for this chat`}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            ))}
+        </div>
       </div>
     );
   };
@@ -276,197 +311,136 @@ export function ChatToolsDisplay({
     );
   }
 
-  const editToolsButton = (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          onClick={handleOpenManageDialog}
-          variant="ghost"
-          size="sm"
-          className="text-xs"
-        >
-          <Settings className="h-2 w-2" />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>
-        <p>Enable or disable tools for this chat</p>
-      </TooltipContent>
-    </Tooltip>
-  );
-
   if (Object.keys(groupedTools).length === 0) {
-    return (
-      <div className={className}>
-        <div className="flex flex-wrap gap-2">{editToolsButton}</div>
-      </div>
-    );
+    return null;
   }
 
-  return (
-    <div className={className}>
-      <TooltipProvider>
-        <div className="flex flex-wrap gap-2">
-          {sortedServerEntries.map(([serverName]) => {
-            // Get all tools for this server from profileTools
-            const allServerTools = profileTools.filter((tool) => {
-              const parts = tool.name.split(MCP_SERVER_TOOL_NAME_SEPARATOR);
-              const toolServerName =
-                parts.length > 1
-                  ? parts.slice(0, -1).join(MCP_SERVER_TOOL_NAME_SEPARATOR)
-                  : "default";
-              return toolServerName === serverName;
-            });
+  const toolButtons = sortedServerEntries.map(([serverName]) => {
+    // Get all tools for this server from allTools (profile tools + agent tools)
+    const allServerTools = allTools.filter((tool) => {
+      const toolServerName =
+        parseFullToolName(tool.name).serverName ?? "default";
+      return toolServerName === serverName;
+    });
 
-            // Split into enabled and disabled
-            let enabledTools: typeof allServerTools = [];
-            let disabledTools: typeof allServerTools = [];
+    // Split into enabled and disabled using the consistent enabledToolIdsSet
+    // In readOnly mode, treat all tools as "enabled" for display purposes
+    const enabledTools: ToolItem[] = [];
+    const disabledTools: ToolItem[] = [];
 
-            if (hasCustomSelection) {
-              for (const tool of allServerTools) {
-                if (enabledToolIdsSet.has(tool.id)) {
-                  enabledTools.push(tool);
-                } else {
-                  disabledTools.push(tool);
-                }
-              }
-            } else {
-              // All tools are enabled when no custom selection
-              enabledTools = allServerTools;
-              disabledTools = [];
-            }
+    for (const tool of allServerTools) {
+      if (readOnly || enabledToolIdsSet.has(tool.id)) {
+        enabledTools.push(tool);
+      } else {
+        disabledTools.push(tool);
+      }
+    }
 
-            const totalToolsCount = allServerTools.length;
-            const isOpen = openTooltips[serverName] ?? false;
+    const totalToolsCount = allServerTools.length;
+    const isOpen = openTooltip === serverName;
 
-            return (
-              <Tooltip
-                key={serverName}
-                open={isOpen || hoveringTooltip[serverName]}
-                onOpenChange={(open) => {
-                  // Update openTooltips, but keep tooltip open if hovering
-                  setOpenTooltips((prev) => ({
-                    ...prev,
-                    [serverName]: open,
-                  }));
-                }}
-              >
-                <TooltipTrigger asChild>
-                  <PromptInputButton
-                    className="w-[fit-content]"
-                    size="sm"
+    return (
+      <Tooltip key={serverName} open={isOpen} onOpenChange={() => {}}>
+        <TooltipTrigger asChild>
+          <PromptInputButton
+            data-tool-button
+            className="w-[fit-content]"
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setOpenTooltip(isOpen ? null : serverName);
+            }}
+          >
+            <span className="font-medium text-xs text-foreground">
+              {serverName}
+            </span>
+            <span className="text-muted-foreground text-xs">
+              {readOnly
+                ? `(${totalToolsCount})`
+                : `(${enabledTools.length}/${totalToolsCount})`}
+            </span>
+          </PromptInputButton>
+        </TooltipTrigger>
+        <TooltipContent
+          ref={tooltipContentRef}
+          side="top"
+          align="center"
+          className="min-w-80 max-h-96 p-0 overflow-y-auto"
+          sideOffset={4}
+          noArrow
+          onWheel={(e) => e.stopPropagation()}
+          onTouchMove={(e) => e.stopPropagation()}
+          onPointerDownOutside={(e) => {
+            e.preventDefault();
+          }}
+        >
+          <ScrollArea className="max-h-96">
+            {/* Enabled section */}
+            {enabledTools.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between px-3 py-2">
+                  <span className="text-xs font-semibold text-muted-foreground">
+                    {readOnly
+                      ? `Tools (${enabledTools.length})`
+                      : `Enabled (${enabledTools.length})`}
+                  </span>
+                  {!readOnly && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs"
+                      onClick={(e) =>
+                        handleDisableAll(
+                          enabledTools.map((t) => t.id),
+                          e,
+                        )
+                      }
+                    >
+                      Disable All
+                    </Button>
+                  )}
+                </div>
+                <div className="space-y-1 px-2 pb-2">
+                  {enabledTools.map((tool) =>
+                    renderToolRow(tool, false, serverName),
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Disabled section - hide in readOnly mode */}
+            {!readOnly && disabledTools.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between px-3 py-2">
+                  <span className="text-xs font-semibold text-muted-foreground">
+                    Disabled ({disabledTools.length})
+                  </span>
+                  <Button
                     variant="outline"
+                    size="sm"
+                    className="text-xs"
+                    onClick={(e) =>
+                      handleEnableAll(
+                        disabledTools.map((t) => t.id),
+                        e,
+                      )
+                    }
                   >
-                    <span className="font-medium text-xs text-foreground">
-                      {serverName}
-                    </span>
-                    <span className="text-muted-foreground text-xs">
-                      ({enabledTools.length}/{totalToolsCount})
-                    </span>
-                  </PromptInputButton>
-                </TooltipTrigger>
-                <TooltipContent
-                  side="top"
-                  align="center"
-                  className="min-w-80 max-h-96 p-0 overflow-y-auto"
-                  sideOffset={10}
-                  onWheel={(e) => e.stopPropagation()}
-                  onTouchMove={(e) => e.stopPropagation()}
-                  onMouseEnter={() => {
-                    setHoveringTooltip((prev) => ({
-                      ...prev,
-                      [serverName]: true,
-                    }));
-                  }}
-                  onMouseLeave={() => {
-                    // Delay to allow moving to nested tooltip
-                    setTimeout(() => {
-                      setHoveringTooltip((prev) => ({
-                        ...prev,
-                        [serverName]: false,
-                      }));
-                      // Also close the tooltip
-                      setOpenTooltips((prev) => ({
-                        ...prev,
-                        [serverName]: false,
-                      }));
-                    }, 30);
-                  }}
-                >
-                  <ScrollArea className="max-h-96">
-                    {/* Enabled section */}
-                    {enabledTools.length > 0 && (
-                      <div>
-                        <div className="flex items-center justify-between px-3 py-2">
-                          <span className="text-xs font-semibold text-muted-foreground">
-                            Enabled ({enabledTools.length})
-                          </span>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="text-xs"
-                            onClick={(e) =>
-                              handleDisableAll(
-                                enabledTools.map((t) => t.id),
-                                e,
-                              )
-                            }
-                          >
-                            Disable All
-                          </Button>
-                        </div>
-                        <div className="space-y-1 px-2 pb-2">
-                          {enabledTools.map((tool) =>
-                            renderToolRow(tool, false, serverName),
-                          )}
-                        </div>
-                      </div>
-                    )}
+                    Enable All
+                  </Button>
+                </div>
+                <div className="space-y-1 px-2 pb-2">
+                  {disabledTools.map((tool) =>
+                    renderToolRow(tool, true, serverName),
+                  )}
+                </div>
+              </div>
+            )}
+          </ScrollArea>
+        </TooltipContent>
+      </Tooltip>
+    );
+  });
 
-                    {/* Disabled section */}
-                    {disabledTools.length > 0 && (
-                      <div>
-                        <div className="flex items-center justify-between px-3 py-2">
-                          <span className="text-xs font-semibold text-muted-foreground">
-                            Disabled ({disabledTools.length})
-                          </span>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="text-xs"
-                            onClick={(e) =>
-                              handleEnableAll(
-                                disabledTools.map((t) => t.id),
-                                e,
-                              )
-                            }
-                          >
-                            Enable All
-                          </Button>
-                        </div>
-                        <div className="space-y-1 px-2 pb-2">
-                          {disabledTools.map((tool) =>
-                            renderToolRow(tool, true, serverName),
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </ScrollArea>
-                </TooltipContent>
-              </Tooltip>
-            );
-          })}
-          {editToolsButton}
-        </div>
-      </TooltipProvider>
-      {conversationId && agentId && (
-        <ManageChatToolsDialog
-          open={isManageToolsDialogOpen}
-          onOpenChange={setIsManageToolsDialogOpen}
-          conversationId={conversationId}
-          agentId={agentId}
-          initialDisabledToolIds={initialDisabledToolIds}
-        />
-      )}
-    </div>
-  );
+  return <TooltipProvider>{toolButtons}</TooltipProvider>;
 }

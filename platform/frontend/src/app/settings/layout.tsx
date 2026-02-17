@@ -14,8 +14,8 @@ export default function SettingsLayout({
     organization: ["read"],
   });
 
-  const { data: userCanReadSsoProviders } = useHasPermissions({
-    ssoProvider: ["read"],
+  const { data: userCanReadIdentityProviders } = useHasPermissions({
+    identityProvider: ["read"],
   });
 
   const { data: userCanUpdateOrganization } = useHasPermissions({
@@ -27,19 +27,24 @@ export default function SettingsLayout({
   const tabs = [
     { label: "Your Account", href: "/settings/account" },
     { label: "Dual LLM", href: "/settings/dual-llm" },
-    { label: "Chat", href: "/settings/chat" },
-    { label: "Policy Config Subagent", href: "/settings/auto-policy" },
+    { label: "LLM API Keys", href: "/settings/llm-api-keys" },
+    { label: "Security", href: "/settings/security" },
     ...(userCanReadOrganization
       ? [
           { label: "Members", href: "/settings/members" },
           { label: "Teams", href: "/settings/teams" },
           { label: "Roles", href: "/settings/roles" },
           /**
-           * SSO Providers tab is only shown when enterprise license is activated
-           * and the user has the permission to read SSO providers.
+           * Identity Providers tab is only shown when enterprise license is activated
+           * and the user has the permission to read identity providers.
            */
-          ...(config.enterpriseLicenseActivated && userCanReadSsoProviders
-            ? [{ label: "SSO Providers", href: "/settings/sso-providers" }]
+          ...(config.enterpriseLicenseActivated && userCanReadIdentityProviders
+            ? [
+                {
+                  label: "Identity Providers",
+                  href: "/settings/identity-providers",
+                },
+              ]
             : []),
           { label: "Appearance", href: "/settings/appearance" },
         ]

@@ -32,7 +32,7 @@ class ConversationEnabledToolModel {
 
   /**
    * Check if conversation has custom tool selection
-   * Returns true if there are entries in the junction table
+   * Returns the value of the has_custom_tool_selection field
    */
   static async hasCustomSelection(conversationId: string): Promise<boolean> {
     logger.debug(
@@ -41,14 +41,15 @@ class ConversationEnabledToolModel {
     );
 
     const result = await db
-      .select({ toolId: schema.conversationEnabledToolsTable.toolId })
-      .from(schema.conversationEnabledToolsTable)
-      .where(
-        eq(schema.conversationEnabledToolsTable.conversationId, conversationId),
-      )
+      .select({
+        hasCustomToolSelection:
+          schema.conversationsTable.hasCustomToolSelection,
+      })
+      .from(schema.conversationsTable)
+      .where(eq(schema.conversationsTable.id, conversationId))
       .limit(1);
 
-    const hasCustom = result.length > 0;
+    const hasCustom = result[0]?.hasCustomToolSelection ?? false;
 
     logger.debug(
       { conversationId, hasCustomSelection: hasCustom },
@@ -60,7 +61,8 @@ class ConversationEnabledToolModel {
 
   /**
    * Set enabled tools for a conversation (replaces all existing)
-   * Pass empty array to clear custom selection (all tools enabled)
+   * Pass empty array to disable all tools (custom selection with zero tools)
+   * Invalid tool IDs (not in tools table) are silently filtered out.
    */
   static async setEnabledTools(
     conversationId: string,
@@ -71,7 +73,32 @@ class ConversationEnabledToolModel {
       "ConversationEnabledToolModel.setEnabledTools: setting enabled tools",
     );
 
+    // Filter to only valid tool IDs that exist in the tools table
+    let validToolIds: string[] = [];
+    if (toolIds.length > 0) {
+      const existingTools = await db
+        .select({ id: schema.toolsTable.id })
+        .from(schema.toolsTable)
+        .where(inArray(schema.toolsTable.id, toolIds));
+
+      validToolIds = existingTools.map((t) => t.id);
+
+      if (validToolIds.length < toolIds.length) {
+        const invalidIds = toolIds.filter((id) => !validToolIds.includes(id));
+        logger.warn(
+          { conversationId, invalidIds },
+          "ConversationEnabledToolModel.setEnabledTools: filtered out invalid tool IDs",
+        );
+      }
+    }
+
     await db.transaction(async (tx) => {
+      // Update the conversation to mark it as having custom tool selection
+      await tx
+        .update(schema.conversationsTable)
+        .set({ hasCustomToolSelection: true })
+        .where(eq(schema.conversationsTable.id, conversationId));
+
       // Delete all existing enabled tool entries
       await tx
         .delete(schema.conversationEnabledToolsTable)
@@ -82,10 +109,10 @@ class ConversationEnabledToolModel {
           ),
         );
 
-      // Insert new enabled tool entries (if any)
-      if (toolIds.length > 0) {
+      // Insert new enabled tool entries (only if there are valid tools to insert)
+      if (validToolIds.length > 0) {
         await tx.insert(schema.conversationEnabledToolsTable).values(
-          toolIds.map((toolId) => ({
+          validToolIds.map((toolId) => ({
             conversationId,
             toolId,
           })),
@@ -94,7 +121,7 @@ class ConversationEnabledToolModel {
     });
 
     logger.debug(
-      { conversationId, enabledCount: toolIds.length },
+      { conversationId, enabledCount: validToolIds.length },
       "ConversationEnabledToolModel.setEnabledTools: completed",
     );
   }
@@ -108,11 +135,23 @@ class ConversationEnabledToolModel {
       "ConversationEnabledToolModel.clearCustomSelection: clearing",
     );
 
-    await db
-      .delete(schema.conversationEnabledToolsTable)
-      .where(
-        eq(schema.conversationEnabledToolsTable.conversationId, conversationId),
-      );
+    await db.transaction(async (tx) => {
+      // Update the conversation to mark it as not having custom tool selection
+      await tx
+        .update(schema.conversationsTable)
+        .set({ hasCustomToolSelection: false })
+        .where(eq(schema.conversationsTable.id, conversationId));
+
+      // Delete all enabled tool entries
+      await tx
+        .delete(schema.conversationEnabledToolsTable)
+        .where(
+          eq(
+            schema.conversationEnabledToolsTable.conversationId,
+            conversationId,
+          ),
+        );
+    });
 
     logger.debug(
       { conversationId },

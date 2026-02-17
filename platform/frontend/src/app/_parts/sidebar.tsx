@@ -1,6 +1,7 @@
 "use client";
 import { SignedIn, SignedOut, UserButton } from "@daveyplate/better-auth-ui";
 import { E2eTestId } from "@shared";
+import { requiredPagePermissionsMap } from "@shared/access-control";
 import {
   BookOpen,
   Bot,
@@ -12,11 +13,14 @@ import {
   type LucideIcon,
   MessageCircle,
   MessagesSquare,
+  Network,
   Router,
   Settings,
+  Shield,
   Slack,
   Star,
   Wrench,
+  Zap,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -24,6 +28,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { ChatSidebarSection } from "@/app/_parts/chat-sidebar-section";
 import { DefaultCredentialsWarning } from "@/components/default-credentials-warning";
 import { WithPermissions } from "@/components/roles/with-permissions";
+import { SecurityEngineWarning } from "@/components/security-engine-warning";
 import { Badge } from "@/components/ui/badge";
 import {
   Sidebar,
@@ -47,13 +52,9 @@ interface MenuItem {
   title: string;
   url: string;
   icon: LucideIcon;
+  iconClassName?: string;
   customIsActive?: (pathname: string, searchParams: URLSearchParams) => boolean;
 }
-
-const { requiredPagePermissionsMap } = config.enterpriseLicenseActivated
-  ? // biome-ignore lint/style/noRestrictedImports: conditional page permissions
-    await import("@shared/access-control.ee")
-  : await import("@shared/access-control");
 
 const getNavigationItems = (isAuthenticated: boolean): MenuItem[] => {
   if (!isAuthenticated) {
@@ -68,9 +69,19 @@ const getNavigationItems = (isAuthenticated: boolean): MenuItem[] => {
         pathname === "/chat" && !searchParams.get("conversation"),
     },
     {
-      title: "Profiles",
-      url: "/profiles",
+      title: "Agents",
+      url: "/agents",
       icon: Bot,
+    },
+    {
+      title: "MCP Gateways",
+      url: "/mcp-gateways",
+      icon: Shield,
+    },
+    {
+      title: "LLM Proxies",
+      url: "/llm-proxies",
+      icon: Network,
     },
     {
       title: "Logs",
@@ -89,6 +100,13 @@ const getNavigationItems = (isAuthenticated: boolean): MenuItem[] => {
       url: "/mcp-catalog/registry",
       icon: Router,
       customIsActive: (pathname: string) => pathname.startsWith("/mcp-catalog"),
+    },
+    {
+      title: "Agent Triggers",
+      url: "/agent-triggers/ms-teams",
+      icon: Zap,
+      customIsActive: (pathname: string) =>
+        pathname.startsWith("/agent-triggers"),
     },
     {
       title: "Cost & Limits",
@@ -118,7 +136,7 @@ const userItems: MenuItem[] = [
   // Sign up is disabled - users must use invitation links to join
 ];
 
-const CommunitySideBarSection = ({ starCount }: { starCount: number }) => (
+const CommunitySideBarSection = ({ starCount }: { starCount: string }) => (
   <SidebarGroup className="px-4 py-0">
     <SidebarGroupLabel>Community</SidebarGroupLabel>
     <SidebarGroupContent>
@@ -156,7 +174,7 @@ const CommunitySideBarSection = ({ starCount }: { starCount: number }) => (
         <SidebarMenuItem>
           <SidebarMenuButton asChild>
             <a
-              href="https://join.slack.com/t/archestracommunity/shared_invite/zt-39yk4skox-zBF1NoJ9u4t59OU8XxQChg"
+              href="https://archestra.ai/join-slack"
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -191,12 +209,12 @@ const MainSideBarSection = ({
   isAuthenticated: boolean;
   pathname: string;
   searchParams: URLSearchParams;
-  starCount: number;
+  starCount: string;
 }) => {
   const allItems = getNavigationItems(isAuthenticated);
   const permissionMap = usePermissionMap(requiredPagePermissionsMap);
   const permittedItems = allItems.filter(
-    (item) => permissionMap[item.url] ?? true,
+    (item) => permissionMap?.[item.url] ?? true,
   );
 
   return (
@@ -214,7 +232,7 @@ const MainSideBarSection = ({
                   }
                 >
                   <Link href={item.url}>
-                    <item.icon />
+                    <item.icon className={item.iconClassName} />
                     <span>{item.title}</span>
                   </Link>
                 </SidebarMenuButton>
@@ -250,6 +268,7 @@ const MainSideBarSection = ({
 
 const FooterSideBarSection = ({ pathname }: { pathname: string }) => (
   <SidebarFooter>
+    <SecurityEngineWarning />
     <DefaultCredentialsWarning />
     <SignedIn>
       <SidebarGroup className="mt-auto">
@@ -290,6 +309,7 @@ export function AppSidebar() {
   const searchParams = useSearchParams();
   const isAuthenticated = useIsAuthenticated();
   const { data: starCount } = useGithubStars();
+  const formattedStarCount = starCount ?? "";
   const { logo, isLoadingAppearance } = useOrgTheme() ?? {};
 
   const logoToShow = logo ? (
@@ -323,7 +343,7 @@ export function AppSidebar() {
   return (
     <Sidebar>
       <SidebarHeader className="flex flex-col gap-2">
-        {isLoadingAppearance ? <div className="h-[20px]" /> : logoToShow}
+        {isLoadingAppearance ? <div className="h-[47px]" /> : logoToShow}
       </SidebarHeader>
       <SidebarContent>
         {isAuthenticated ? (
@@ -331,10 +351,10 @@ export function AppSidebar() {
             isAuthenticated={isAuthenticated}
             pathname={pathname}
             searchParams={searchParams}
-            starCount={starCount}
+            starCount={formattedStarCount}
           />
         ) : (
-          <CommunitySideBarSection starCount={starCount} />
+          <CommunitySideBarSection starCount={formattedStarCount} />
         )}
       </SidebarContent>
       <FooterSideBarSection pathname={pathname} />

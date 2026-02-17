@@ -13,15 +13,13 @@ import {
   ToolModel,
   UserModel,
 } from "@/models";
-import { agentToolAutoPolicyService } from "@/models/agent-tool-auto-policy";
+import { toolAutoPolicyService } from "@/models/agent-tool-auto-policy";
 import type { InternalMcpCatalog, Tool } from "@/types";
 import {
   AgentToolFilterSchema,
   AgentToolSortBySchema,
   AgentToolSortDirectionSchema,
   ApiError,
-  BulkUpdateAgentToolsRequestSchema,
-  BulkUpdateAgentToolsResponseSchema,
   constructResponseSchema,
   createPaginatedResponseSchema,
   DeleteObjectResponseSchema,
@@ -44,6 +42,7 @@ const agentToolRoutes: FastifyPluginAsyncZod = async (fastify) => {
         querystring: AgentToolFilterSchema.extend({
           sortBy: AgentToolSortBySchema.optional(),
           sortDirection: AgentToolSortDirectionSchema.optional(),
+          skipPagination: z.coerce.boolean().optional(),
         }).merge(PaginationQuerySchema),
         response: constructResponseSchema(
           createPaginatedResponseSchema(SelectAgentToolSchema),
@@ -62,6 +61,7 @@ const agentToolRoutes: FastifyPluginAsyncZod = async (fastify) => {
           origin,
           mcpServerOwnerId,
           excludeArchestraTools,
+          skipPagination,
         },
         headers,
         user,
@@ -73,19 +73,20 @@ const agentToolRoutes: FastifyPluginAsyncZod = async (fastify) => {
         headers,
       );
 
-      const result = await AgentToolModel.findAllPaginated(
-        { limit, offset },
-        { sortBy, sortDirection },
-        {
+      const result = await AgentToolModel.findAll({
+        pagination: { limit, offset },
+        sorting: { sortBy, sortDirection },
+        filters: {
           search,
           agentId,
           origin,
           mcpServerOwnerId,
           excludeArchestraTools,
         },
-        user.id,
+        userId: user.id,
         isAgentAdmin,
-      );
+        skipPagination,
+      });
 
       return reply.send(result);
     },
@@ -275,55 +276,35 @@ const agentToolRoutes: FastifyPluginAsyncZod = async (fastify) => {
   );
 
   fastify.post(
-    "/api/agent-tools/bulk-update",
-    {
-      schema: {
-        operationId: RouteId.BulkUpdateAgentTools,
-        description: "Update multiple agent tools with the same value in bulk",
-        tags: ["Agent Tools"],
-        body: BulkUpdateAgentToolsRequestSchema,
-        response: constructResponseSchema(BulkUpdateAgentToolsResponseSchema),
-      },
-    },
-    async (request, reply) => {
-      const { ids, field, value, clearAutoConfigured } = request.body;
-
-      const updatedCount = await AgentToolModel.bulkUpdateSameValue(
-        ids,
-        field,
-        value as boolean | "trusted" | "sanitize_with_dual_llm" | "untrusted",
-        clearAutoConfigured,
-      );
-
-      return reply.send({ updatedCount });
-    },
-  );
-
-  fastify.post(
     "/api/agent-tools/auto-configure-policies",
     {
       schema: {
         operationId: RouteId.AutoConfigureAgentToolPolicies,
         description:
-          "Automatically configure security policies for agent-tool assignments using Anthropic LLM analysis",
+          "Automatically configure security policies for tools using LLM analysis",
         tags: ["Agent Tools"],
         body: z.object({
-          agentToolIds: z.array(z.string().uuid()).min(1),
+          toolIds: z.array(z.string().uuid()).min(1),
         }),
         response: constructResponseSchema(
           z.object({
             success: z.boolean(),
             results: z.array(
               z.object({
-                agentToolId: z.string().uuid(),
+                toolId: z.string().uuid(),
                 success: z.boolean(),
                 config: z
                   .object({
-                    allowUsageWhenUntrustedDataIsPresent: z.boolean(),
-                    toolResultTreatment: z.enum([
-                      "trusted",
+                    toolInvocationAction: z.enum([
+                      "allow_when_context_is_untrusted",
+                      "block_when_context_is_untrusted",
+                      "block_always",
+                    ]),
+                    trustedDataAction: z.enum([
+                      "mark_as_trusted",
+                      "mark_as_untrusted",
                       "sanitize_with_dual_llm",
-                      "untrusted",
+                      "block_always",
                     ]),
                     reasoning: z.string(),
                   })
@@ -336,16 +317,18 @@ const agentToolRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async ({ body, organizationId, user }, reply) => {
-      const { agentToolIds } = body;
+      const { toolIds } = body;
 
       logger.info(
-        { organizationId, userId: user.id, count: agentToolIds.length },
+        { organizationId, userId: user.id, count: toolIds.length },
         "POST /api/agent-tools/auto-configure-policies: request received",
       );
 
       // Check if service is available for this organization
-      const available =
-        await agentToolAutoPolicyService.isAvailable(organizationId);
+      const available = await toolAutoPolicyService.isAvailable(
+        organizationId,
+        user.id,
+      );
       if (!available) {
         logger.warn(
           { organizationId, userId: user.id },
@@ -353,15 +336,15 @@ const agentToolRoutes: FastifyPluginAsyncZod = async (fastify) => {
         );
         throw new ApiError(
           503,
-          "Auto-policy requires a default Anthropic chat API key to be configured",
+          "Auto-policy requires an LLM API key to be configured in LLM API Keys settings",
         );
       }
 
-      const result =
-        await agentToolAutoPolicyService.configurePoliciesForAgentTools(
-          agentToolIds,
-          organizationId,
-        );
+      const result = await toolAutoPolicyService.configurePoliciesForTools(
+        toolIds,
+        organizationId,
+        user.id,
+      );
 
       logger.info(
         {
@@ -416,17 +399,22 @@ const agentToolRoutes: FastifyPluginAsyncZod = async (fastify) => {
         params: z.object({
           agentId: UuidIdSchema,
         }),
+        querystring: z.object({
+          excludeLlmProxyOrigin: z.coerce.boolean().optional().default(false),
+        }),
         response: constructResponseSchema(z.array(SelectToolSchema)),
       },
     },
-    async ({ params: { agentId } }, reply) => {
+    async ({ params: { agentId }, query }, reply) => {
       // Validate that agent exists
       const agent = await AgentModel.findById(agentId);
       if (!agent) {
         throw new ApiError(404, `Agent with ID ${agentId} not found`);
       }
 
-      const tools = await ToolModel.getToolsByAgent(agentId);
+      const tools = query.excludeLlmProxyOrigin
+        ? await ToolModel.getMcpToolsByAgent(agentId)
+        : await ToolModel.getToolsByAgent(agentId);
 
       return reply.send(tools);
     },
@@ -443,13 +431,10 @@ const agentToolRoutes: FastifyPluginAsyncZod = async (fastify) => {
           id: UuidIdSchema,
         }),
         body: UpdateAgentToolSchema.pick({
-          allowUsageWhenUntrustedDataIsPresent: true,
-          toolResultTreatment: true,
           responseModifierTemplate: true,
           credentialSourceMcpServerId: true,
           executionSourceMcpServerId: true,
           useDynamicTeamCredential: true,
-          policiesAutoConfiguredAt: true,
         }).partial(),
         response: constructResponseSchema(UpdateAgentToolSchema),
       },
@@ -463,12 +448,14 @@ const agentToolRoutes: FastifyPluginAsyncZod = async (fastify) => {
 
       // Get the agent-tool relationship for validation (needed for both credential and execution source)
       let agentToolForValidation:
-        | Awaited<ReturnType<typeof AgentToolModel.findAll>>[number]
+        | Awaited<ReturnType<typeof AgentToolModel.findAll>>["data"][number]
         | undefined;
 
       if (credentialSourceMcpServerId || executionSourceMcpServerId) {
-        const agentTools = await AgentToolModel.findAll();
-        agentToolForValidation = agentTools.find((at) => at.id === id);
+        const agentTools = await AgentToolModel.findAll({
+          skipPagination: true,
+        });
+        agentToolForValidation = agentTools.data.find((at) => at.id === id);
 
         if (!agentToolForValidation) {
           throw new ApiError(
@@ -557,6 +544,240 @@ const agentToolRoutes: FastifyPluginAsyncZod = async (fastify) => {
       clearChatMcpClient(agentTool.agentId);
 
       return reply.send(agentTool);
+    },
+  );
+
+  // =============================================================================
+  // Agent Delegation Routes (internal agents only)
+  // =============================================================================
+
+  /**
+   * Get delegation targets for an internal agent
+   */
+  fastify.get(
+    "/api/agents/:agentId/delegations",
+    {
+      schema: {
+        operationId: RouteId.GetAgentDelegations,
+        description:
+          "Get all delegation targets for an agent. Not applicable to LLM proxies.",
+        tags: ["Agent Delegations"],
+        params: z.object({
+          agentId: UuidIdSchema,
+        }),
+        response: constructResponseSchema(
+          z.array(
+            z.object({
+              id: z.string().uuid(),
+              name: z.string(),
+              description: z.string().nullable(),
+              systemPrompt: z.string().nullable(),
+            }),
+          ),
+        ),
+      },
+    },
+    async ({ params: { agentId }, headers, user }, reply) => {
+      const { success: isAgentAdmin } = await hasPermission(
+        { profile: ["admin"] },
+        headers,
+      );
+
+      // Validate agent exists and is accessible
+      const agent = await AgentModel.findById(agentId, user.id, isAgentAdmin);
+      if (!agent) {
+        throw new ApiError(404, "Agent not found");
+      }
+
+      // Delegations allowed for agent, mcp_gateway, and profile (not llm_proxy)
+      if (agent.agentType === "llm_proxy") {
+        throw new ApiError(400, "LLM proxies cannot have subagents");
+      }
+
+      const delegations = await AgentToolModel.getDelegationTargets(
+        agentId,
+        user.id,
+        isAgentAdmin,
+      );
+      return reply.send(delegations);
+    },
+  );
+
+  /**
+   * Sync delegation targets for an agent (replace all with new list)
+   */
+  fastify.post(
+    "/api/agents/:agentId/delegations",
+    {
+      schema: {
+        operationId: RouteId.SyncAgentDelegations,
+        description:
+          "Sync delegation targets for an agent. Replaces all existing delegations with the new list. Not applicable to LLM proxies.",
+        tags: ["Agent Delegations"],
+        params: z.object({
+          agentId: UuidIdSchema,
+        }),
+        body: z.object({
+          targetAgentIds: z.array(UuidIdSchema),
+        }),
+        response: constructResponseSchema(
+          z.object({
+            added: z.array(z.string()),
+            removed: z.array(z.string()),
+          }),
+        ),
+      },
+    },
+    async ({ params: { agentId }, body, headers, user }, reply) => {
+      const { success: isAgentAdmin } = await hasPermission(
+        { profile: ["admin"] },
+        headers,
+      );
+
+      // Validate agent exists and is accessible
+      const agent = await AgentModel.findById(agentId, user.id, isAgentAdmin);
+      if (!agent) {
+        throw new ApiError(404, "Agent not found");
+      }
+
+      // Delegations allowed for agent, mcp_gateway, and profile (not llm_proxy)
+      if (agent.agentType === "llm_proxy") {
+        throw new ApiError(400, "LLM proxies cannot have subagents");
+      }
+
+      // Validate all target agents exist and are internal agents
+      for (const targetAgentId of body.targetAgentIds) {
+        const targetAgent = await AgentModel.findById(targetAgentId);
+        if (!targetAgent) {
+          throw new ApiError(404, `Target agent ${targetAgentId} not found`);
+        }
+        if (targetAgent.agentType !== "agent") {
+          throw new ApiError(
+            400,
+            `Target agent ${targetAgentId} is not an internal agent`,
+          );
+        }
+        // Prevent self-delegation
+        if (targetAgentId === agentId) {
+          throw new ApiError(400, "An agent cannot delegate to itself");
+        }
+      }
+
+      const result = await AgentToolModel.syncDelegations(
+        agentId,
+        body.targetAgentIds,
+      );
+
+      // Clear chat MCP client cache
+      clearChatMcpClient(agentId);
+
+      return reply.send(result);
+    },
+  );
+
+  /**
+   * Remove a specific delegation from an agent
+   */
+  fastify.delete(
+    "/api/agents/:agentId/delegations/:targetAgentId",
+    {
+      schema: {
+        operationId: RouteId.DeleteAgentDelegation,
+        description:
+          "Remove a specific delegation from an agent. Not applicable to LLM proxies.",
+        tags: ["Agent Delegations"],
+        params: z.object({
+          agentId: UuidIdSchema,
+          targetAgentId: UuidIdSchema,
+        }),
+        response: constructResponseSchema(DeleteObjectResponseSchema),
+      },
+    },
+    async ({ params: { agentId, targetAgentId }, headers, user }, reply) => {
+      const { success: isAgentAdmin } = await hasPermission(
+        { profile: ["admin"] },
+        headers,
+      );
+
+      // Validate agent exists and is accessible
+      const agent = await AgentModel.findById(agentId, user.id, isAgentAdmin);
+      if (!agent) {
+        throw new ApiError(404, "Agent not found");
+      }
+
+      // Delegations allowed for agent, mcp_gateway, and profile (not llm_proxy)
+      if (agent.agentType === "llm_proxy") {
+        throw new ApiError(400, "LLM proxies cannot have subagents");
+      }
+
+      const success = await AgentToolModel.removeDelegation(
+        agentId,
+        targetAgentId,
+      );
+
+      if (!success) {
+        throw new ApiError(404, "Delegation not found");
+      }
+
+      // Clear chat MCP client cache
+      clearChatMcpClient(agentId);
+
+      return reply.send({ success: true });
+    },
+  );
+
+  /**
+   * Get all delegation connections for canvas visualization
+   */
+  fastify.get(
+    "/api/agent-delegations",
+    {
+      schema: {
+        operationId: RouteId.GetAllDelegationConnections,
+        description:
+          "Get all agent delegation connections for canvas visualization.",
+        tags: ["Agent Delegations"],
+        response: constructResponseSchema(
+          z.object({
+            connections: z.array(
+              z.object({
+                sourceAgentId: z.string().uuid(),
+                sourceAgentName: z.string(),
+                targetAgentId: z.string().uuid(),
+                targetAgentName: z.string(),
+                toolId: z.string().uuid(),
+              }),
+            ),
+            agents: z.array(
+              z.object({
+                id: z.string().uuid(),
+                name: z.string(),
+                agentType: z.enum([
+                  "profile",
+                  "mcp_gateway",
+                  "llm_proxy",
+                  "agent",
+                ]),
+              }),
+            ),
+          }),
+        ),
+      },
+    },
+    async ({ organizationId }, reply) => {
+      const [connections, agents] = await Promise.all([
+        AgentToolModel.getAllDelegationConnections(organizationId),
+        AgentModel.findByOrganizationId(organizationId, { agentType: "agent" }),
+      ]);
+
+      return reply.send({
+        connections,
+        agents: agents.map((a) => ({
+          id: a.id,
+          name: a.name,
+          agentType: a.agentType,
+        })),
+      });
     },
   );
 };

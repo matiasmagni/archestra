@@ -20,6 +20,7 @@ export const TeamStatisticsSchema = z.object({
 export const AgentStatisticsSchema = z.object({
   agentId: z.string(),
   agentName: z.string(),
+  agentType: z.string(),
   teamName: z.string(),
   requests: z.number(),
   inputTokens: z.number(),
@@ -69,6 +70,7 @@ const BaseTimeSeriesDataSchema = z.object({
   requests: z.number(),
   inputTokens: z.number(),
   outputTokens: z.number(),
+  cost: z.number(), // Stored cost from interactions (already calculated per-model)
 });
 
 export const StatisticsTeamTimeSeriesDataSchema =
@@ -81,6 +83,7 @@ export const StatisticsAgentTimeSeriesDataSchema =
   BaseTimeSeriesDataSchema.extend({
     agentId: z.string(),
     agentName: z.string(),
+    agentType: z.string(),
     teamName: z.string().nullable(),
   });
 

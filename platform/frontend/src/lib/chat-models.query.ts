@@ -1,55 +1,63 @@
-import { archestraApiSdk, type SupportedProvider } from "@shared";
-import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
+import {
+  archestraApiSdk,
+  type archestraApiTypes,
+  type SupportedProvider,
+} from "@shared";
+import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
+import { handleApiError } from "./utils";
 
-const { getChatModels } = archestraApiSdk;
+const { getChatModels, getModelsWithApiKeys } = archestraApiSdk;
 
-export interface ChatModel {
-  id: string;
-  displayName: string;
-  provider: SupportedProvider;
-  createdAt?: string;
-}
+/**
+ * Chat model type from the API response.
+ * Uses the generated API types for type safety.
+ */
+export type ChatModel = archestraApiTypes.GetChatModelsResponses["200"][number];
+
+/**
+ * Model capabilities type extracted from ChatModel.
+ */
+export type ModelCapabilities = NonNullable<ChatModel["capabilities"]>;
 
 /**
  * Fetch available chat models from all configured providers.
- * Models are cached server-side for 12 hours.
  */
 export function useChatModels() {
-  return useSuspenseQuery({
+  return useQuery({
     queryKey: ["chat-models"],
-    queryFn: async () => {
+    queryFn: async (): Promise<ChatModel[]> => {
       const { data, error } = await getChatModels();
       if (error) {
-        throw new Error(
-          typeof error.error === "string"
-            ? error.error
-            : error.error?.message || "Failed to fetch chat models",
-        );
+        handleApiError(error);
+        return [];
       }
-      return (data ?? []) as ChatModel[];
+      return data ?? [];
     },
-    // Frontend cache for 5 minutes (server caches for 12 hours)
-    staleTime: 5 * 60 * 1000,
   });
 }
 
 /**
  * Get models grouped by provider for UI display.
- * Uses Suspense - must be used within a Suspense boundary.
+ * Returns models grouped by provider with loading/error states.
  */
 export function useModelsByProvider() {
   const query = useChatModels();
 
-  const modelsByProvider = query.data.reduce(
-    (acc, model) => {
-      if (!acc[model.provider]) {
-        acc[model.provider] = [];
-      }
-      acc[model.provider].push(model);
-      return acc;
-    },
-    {} as Record<SupportedProvider, ChatModel[]>,
-  );
+  // Memoize to prevent creating new object reference on every render
+  const modelsByProvider = useMemo(() => {
+    if (!query.data) return {} as Record<SupportedProvider, ChatModel[]>;
+    return query.data.reduce(
+      (acc, model) => {
+        if (!acc[model.provider]) {
+          acc[model.provider] = [];
+        }
+        acc[model.provider].push(model);
+        return acc;
+      },
+      {} as Record<SupportedProvider, ChatModel[]>,
+    );
+  }, [query.data]);
 
   return {
     ...query,
@@ -58,26 +66,30 @@ export function useModelsByProvider() {
 }
 
 /**
- * Non-suspense version for fetching chat models.
- * Use in components without Suspense boundaries.
+ * Model with API keys type from the API response.
  */
-export function useChatModelsQuery(conversationId?: string) {
+export type ModelWithApiKeys =
+  archestraApiTypes.GetModelsWithApiKeysResponses["200"][number];
+
+/**
+ * Linked API key type extracted from ModelWithApiKeys.
+ */
+export type LinkedApiKey = ModelWithApiKeys["apiKeys"][number];
+
+/**
+ * Fetch all models with their linked API keys.
+ * Used for the settings page models table.
+ */
+export function useModelsWithApiKeys() {
   return useQuery({
-    queryKey: ["chat-models", conversationId],
-    queryFn: async () => {
-      if (!conversationId) {
+    queryKey: ["models-with-api-keys"],
+    queryFn: async (): Promise<ModelWithApiKeys[]> => {
+      const { data, error } = await getModelsWithApiKeys();
+      if (error) {
+        handleApiError(error);
         return [];
       }
-      const { data, error } = await getChatModels();
-      if (error) {
-        throw new Error(
-          typeof error.error === "string"
-            ? error.error
-            : error.error?.message || "Failed to fetch chat models",
-        );
-      }
-      return (data ?? []) as ChatModel[];
+      return data ?? [];
     },
-    staleTime: 5 * 60 * 1000,
   });
 }

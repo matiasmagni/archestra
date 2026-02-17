@@ -12,8 +12,9 @@ const projectNames = {
   chromium: "chromium",
   firefox: "firefox",
   webkit: "webkit",
-  sso: "sso",
+  identityProviders: "identity-providers",
   api: "api",
+  vaultK8s: "vault-k8s",
 };
 
 /**
@@ -26,8 +27,9 @@ const testPatterns = {
   teamsSetup: /auth\.teams\.setup\.ts/,
   // Special test files that need isolated execution
   credentialsWithVault: /credentials-with-vault\.ee\.spec\.ts/,
-  // NOTE: File was renamed to .ee.spec.ts in commit f10027e (move SSO logic to .ee files)
-  ssoProviders: /sso-providers\.ee\.spec\.ts/,
+  identityProviders: /identity-providers\.ee\.spec\.ts/,
+  // Vault K8s startup test — runs in a dedicated CI job with Vault K8s auth
+  vaultK8s: /vault-k8s-startup\.spec\.ts/,
 };
 
 /**
@@ -36,7 +38,8 @@ const testPatterns = {
  */
 const browserTestIgnore = [
   testPatterns.credentialsWithVault,
-  testPatterns.ssoProviders,
+  testPatterns.identityProviders,
+  testPatterns.vaultK8s,
 ];
 
 /** Specs excluded from chromium-stable (flaky or need extra setup); full run still uses chromium project */
@@ -49,18 +52,18 @@ const chromiumStableIgnore = [
 
 /**
  * Common dependency configurations
+ *
+ * IMPORTANT: For sharding to work correctly, all test projects must depend
+ * only on setup projects, NOT on other test projects. This allows Playwright
+ * to distribute test files across shards without pulling in entire project chains.
+ *
+ * The setup-teams project is the final setup step that all tests depend on.
+ * Previously, we had inter-test dependencies (chromium → credentials-with-vault → identity-providers → api)
+ * which caused each shard to run the same tests.
  */
 const dependencies = {
-  // Browser projects depend on credentials-with-vault completing first
-  browserProjects: [projectNames.credentialsWithVault],
-  // SSO tests run after all browser UI tests to avoid parallel execution issues
-  ssoProject: [
-    projectNames.chromium,
-    projectNames.firefox,
-    projectNames.webkit,
-  ],
-  // API tests should run after all UI tests to avoid DB state conflicts
-  apiProject: [projectNames.sso],
+  // All test projects depend only on setup completion
+  testProjects: [projectNames.setupTeams],
 };
 
 /**
@@ -78,7 +81,7 @@ export default defineConfig({
   /* Global timeout for each test */
   timeout: 60_000,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
-  reporter: IS_CI ? [["html"], ["line"]] : "line",
+  reporter: IS_CI ? [["blob"], ["github"], ["line"]] : "line",
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
@@ -120,35 +123,30 @@ export default defineConfig({
       // Teams setup needs users to be created first
       dependencies: [projectNames.setupUsers],
     },
-    // This runs first and by default we use Vault as secrets manager
-    // At the end of this test we switch to DB as secrets manager because all other tests rely on it
+    // Vault integration tests - tests BYOS (Bring Your Own Secrets) with HashiCorp Vault
+    // Note: This test file manages its own secrets manager state (switches to Vault, then back to DB)
     {
       name: projectNames.credentialsWithVault,
       testMatch: testPatterns.credentialsWithVault,
       testDir: "./tests/ui",
       use: {
         ...devices["Desktop Chrome"],
-        // Use the stored authentication state
         storageState: adminAuthFile,
       },
-      // Run all setup projects before tests
-      dependencies: [projectNames.setupTeams],
+      dependencies: dependencies.testProjects,
     },
-    // UI tests run on all browsers
-    // Note: SSO tests are excluded here and run in a separate project to avoid
-    // parallel execution issues (they manipulate shared backend state like SSO providers)
+    // Main UI tests on Chrome
     {
       name: projectNames.chromium,
       testDir: "./tests/ui",
       testIgnore: browserTestIgnore,
       use: {
         ...devices["Desktop Chrome"],
-        // Use the stored authentication state
         storageState: adminAuthFile,
       },
-      // Run all setup projects before tests
-      dependencies: dependencies.browserProjects,
+      dependencies: dependencies.testProjects,
     },
+    // Firefox tests - only runs tests tagged with @firefox
     {
       name: "chromium-stable",
       testDir: "./tests/ui",
@@ -165,55 +163,55 @@ export default defineConfig({
       testIgnore: browserTestIgnore,
       use: {
         ...devices["Desktop Firefox"],
-        // Use the stored authentication state
         storageState: adminAuthFile,
       },
-      // Run all setup projects before tests
-      dependencies: dependencies.browserProjects,
+      dependencies: dependencies.testProjects,
       grep: /@firefox/,
     },
+    // WebKit tests - only runs tests tagged with @webkit
     {
       name: projectNames.webkit,
       testDir: "./tests/ui",
       testIgnore: browserTestIgnore,
       use: {
         ...devices["Desktop Safari"],
-        // Use the stored authentication state
         storageState: adminAuthFile,
       },
-      // Run all setup projects before tests
-      dependencies: dependencies.browserProjects,
+      dependencies: dependencies.testProjects,
       grep: /@webkit/,
     },
-    // SSO tests run AFTER all other UI tests complete to avoid parallel execution issues
-    // These tests manipulate shared backend state (SSO providers, Keycloak) and need isolation
-    // IMPORTANT: SSO tests do NOT use storageState because:
-    // 1. SSO logins can invalidate the admin session stored in adminAuthFile
-    // 2. Each SSO test needs to authenticate fresh to avoid session conflicts
-    // 3. The ensureAdminAuthenticated() helper handles login at the start of each test
+    // Identity provider tests - manipulate shared backend state, authenticate fresh each test
     {
-      name: projectNames.sso,
+      name: projectNames.identityProviders,
       testDir: "./tests/ui",
-      testMatch: testPatterns.ssoProviders,
+      testMatch: testPatterns.identityProviders,
       use: {
         ...devices["Desktop Chrome"],
-        // No storageState - SSO tests authenticate fresh via ensureAdminAuthenticated()
+        // No storageState - identity provider tests authenticate fresh via ensureAdminAuthenticated()
       },
-      // Run after all browser UI tests complete - ensures exclusive access to SSO resources
-      dependencies: dependencies.ssoProject,
+      dependencies: dependencies.testProjects,
     },
-    // API tests only run on chromium (browser doesn't matter for API integration tests)
-    // API tests only need authentication setup, not the full UI test suite
+    // API integration tests
     {
       name: projectNames.api,
       testDir: "./tests/api",
+      testIgnore: [testPatterns.vaultK8s],
       use: {
         ...devices["Desktop Chrome"],
-        // Use the stored authentication state
         storageState: adminAuthFile,
       },
-      // Only depend on auth setup, not UI tests
-      dependencies: dependencies.apiProject,
+      dependencies: dependencies.testProjects,
+    },
+    // Vault K8s startup test — validates platform starts with DB URL from Vault via K8s auth
+    {
+      name: projectNames.vaultK8s,
+      testMatch: testPatterns.vaultK8s,
+      testDir: "./tests/api",
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: adminAuthFile,
+      },
+      dependencies: dependencies.testProjects,
     },
   ],
 });

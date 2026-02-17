@@ -60,6 +60,56 @@ export const GeminiErrorCodes = {
 } as const;
 
 /**
+ * vLLM API error types
+ * vLLM uses OpenAI-compatible error format, so types are similar to OpenAI.
+ * @see https://docs.vllm.ai/en/latest/features/openai_api.html
+ */
+export const VllmErrorTypes = {
+  INVALID_REQUEST: "invalid_request_error",
+  AUTHENTICATION: "authentication_error",
+  INVALID_API_KEY: "invalid_api_key",
+  NOT_FOUND: "not_found_error",
+  SERVER_ERROR: "server_error",
+  SERVICE_UNAVAILABLE: "service_unavailable",
+  // vLLM-specific error codes
+  MODEL_NOT_LOADED: "model_not_loaded",
+  CONTEXT_LENGTH_EXCEEDED: "context_length_exceeded",
+} as const;
+
+/**
+ * AWS Bedrock Converse API exception types (from response body `__type` field)
+ * @see https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Converse.html
+ */
+export const BedrockErrorTypes = {
+  ACCESS_DENIED: "AccessDeniedException",
+  INTERNAL_SERVER: "InternalServerException",
+  MODEL_ERROR: "ModelErrorException",
+  MODEL_NOT_READY: "ModelNotReadyException",
+  MODEL_TIMEOUT: "ModelTimeoutException",
+  RESOURCE_NOT_FOUND: "ResourceNotFoundException",
+  SERVICE_UNAVAILABLE: "ServiceUnavailableException",
+  THROTTLING: "ThrottlingException",
+  VALIDATION: "ValidationException",
+} as const;
+
+/**
+ * Ollama API error types
+ * Ollama uses OpenAI-compatible error format, so types are similar to OpenAI.
+ * @see https://github.com/ollama/ollama/blob/main/docs/openai.md
+ */
+export const OllamaErrorTypes = {
+  INVALID_REQUEST: "invalid_request_error",
+  AUTHENTICATION: "authentication_error",
+  INVALID_API_KEY: "invalid_api_key",
+  NOT_FOUND: "not_found_error",
+  SERVER_ERROR: "server_error",
+  SERVICE_UNAVAILABLE: "service_unavailable",
+  // Ollama-specific error codes
+  MODEL_NOT_FOUND: "model_not_found",
+  CONTEXT_LENGTH_EXCEEDED: "context_length_exceeded",
+} as const;
+
+/**
  * Gemini/Vertex AI ErrorInfo reason codes (from `error.details[].reason` field)
  * These provide more specific error reasons extracted from google.rpc.ErrorInfo.
  *
@@ -92,6 +142,39 @@ export const GeminiErrorReasons = {
   // Request reasons
   INVALID_ARGUMENT: "INVALID_ARGUMENT",
   CONTEXT_LENGTH_EXCEEDED: "CONTEXT_LENGTH_EXCEEDED",
+} as const;
+
+/**
+ * Zhipuai API error codes (from response body `error.code` field)
+ * Zhipuai uses numeric string codes for errors
+ * @see https://docs.z.ai/api-reference/api-code#errors
+ */
+export const ZhipuaiErrorTypes = {
+  // Basic errors
+  INTERNAL_ERROR: "500",
+
+  // Authentication errors (1000-1004)
+  AUTHENTICATION_FAILED: "1000",
+  INVALID_AUTH_TOKEN: "1002",
+  AUTH_TOKEN_EXPIRED: "1003",
+
+  // Account errors (1110-1121)
+  ACCOUNT_LOCKED: "1112",
+  INSUFFICIENT_BALANCE: "1113",
+
+  // API call errors (1200-1234)
+  INVALID_API_PARAMETERS: "1210",
+  MODEL_NOT_FOUND: "1211",
+  INVALID_PARAMETER: "1214",
+  NO_PERMISSION: "1220",
+  API_OFFLINE: "1221",
+  NETWORK_ERROR: "1234",
+
+  // Policy block errors (1300-1309)
+  CONTENT_FILTERED: "1301", // Unsafe or sensitive content detected
+  HIGH_CONCURRENCY: "1302",
+  HIGH_FREQUENCY: "1303",
+  RATE_LIMIT: "1305",
 } as const;
 
 // =============================================================================

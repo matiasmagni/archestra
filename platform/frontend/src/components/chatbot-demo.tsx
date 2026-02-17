@@ -37,7 +37,9 @@ import {
   ToolOutput,
 } from "@/components/ai-elements/tool";
 import { Button } from "@/components/ui/button";
+import { parsePolicyDenied } from "@/lib/llmProviders/common";
 import { cn } from "@/lib/utils";
+import { PolicyDeniedTool } from "./chat/policy-denied-tool";
 import Divider from "./divider";
 
 const ChatBotDemo = ({
@@ -47,6 +49,7 @@ const ChatBotDemo = ({
   containerClassName,
   topPart,
   hideDivider,
+  profileId,
 }: {
   messages: PartialUIMessage[];
   reload?: () => void;
@@ -54,6 +57,7 @@ const ChatBotDemo = ({
   containerClassName?: string;
   topPart?: React.ReactNode;
   hideDivider?: boolean;
+  profileId?: string;
 }) => {
   const status: ChatStatus = "streaming" as ChatStatus;
 
@@ -130,7 +134,19 @@ const ChatBotDemo = ({
                     }
 
                     switch (part.type) {
-                      case "text":
+                      case "text": {
+                        const policyDenied = parsePolicyDenied(part.text);
+                        if (policyDenied) {
+                          return (
+                            <PolicyDeniedTool
+                              key={`${message.id}-${i}`}
+                              policyDenied={policyDenied}
+                              {...(profileId
+                                ? { editable: true, profileId }
+                                : { editable: false })}
+                            />
+                          );
+                        }
                         return (
                           <Fragment key={`${message.id}-${i}`}>
                             <Message from={message.role}>
@@ -158,6 +174,7 @@ const ChatBotDemo = ({
                               )}
                           </Fragment>
                         );
+                      }
                       case "tool-invocation":
                       case "dynamic-tool": {
                         const toolName =
@@ -410,6 +427,14 @@ export type BlockedToolPart = {
   fullRefusal?: string;
 };
 
+export type PolicyDeniedPart = {
+  type: string; // "tool-<toolName>"
+  toolCallId: string;
+  state: "output-denied";
+  input: Record<string, unknown>;
+  errorText: string;
+};
+
 export type DualLlmPart = {
   type: "dual-llm-analysis";
   toolCallId: string;
@@ -422,7 +447,12 @@ export type DualLlmPart = {
 
 export type PartialUIMessage = Partial<UIMessage> & {
   role: UIMessage["role"];
-  parts: (UIMessage["parts"][number] | BlockedToolPart | DualLlmPart)[];
+  parts: (
+    | UIMessage["parts"][number]
+    | BlockedToolPart
+    | DualLlmPart
+    | PolicyDeniedPart
+  )[];
   metadata?: {
     trusted?: boolean;
     blocked?: boolean;

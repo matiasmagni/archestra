@@ -1,4 +1,10 @@
+import { oauthProviderClient } from "@better-auth/oauth-provider/client";
 import { ssoClient } from "@better-auth/sso/client";
+import {
+  allAvailableActions,
+  editorPermissions,
+  memberPermissions,
+} from "@shared/access-control";
 import {
   adminClient,
   apiKeyClient,
@@ -10,11 +16,6 @@ import { createAccessControl } from "better-auth/plugins/access";
 import { createAuthClient } from "better-auth/react";
 import config from "@/lib/config";
 
-const { allAvailableActions, editorPermissions, memberPermissions } =
-  config.enterpriseLicenseActivated
-    ? // biome-ignore lint/style/noRestrictedImports: EE-only permissions
-      await import("@shared/access-control.ee")
-    : await import("@shared/access-control");
 const ac = createAccessControl(allAvailableActions);
 
 const adminRole = ac.newRole(allAvailableActions);
@@ -49,6 +50,7 @@ export const authClient = createAuthClient({
     apiKeyClient(),
     twoFactorClient(),
     ssoClient(),
+    oauthProviderClient(),
   ],
   fetchOptions: {
     credentials: "include",

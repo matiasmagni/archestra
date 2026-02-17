@@ -1,10 +1,16 @@
+import { readFileSync } from "node:fs";
 import { RouteId } from "@shared";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { z } from "zod";
+import { getEmailProviderInfo } from "@/agents/incoming-email";
+import { isVertexAiEnabled } from "@/clients/gemini-client";
 import config from "@/config";
+import { getKnowledgeGraphProviderInfo } from "@/knowledge-graph";
 import { McpServerRuntimeManager } from "@/mcp-server-runtime";
-import { isVertexAiEnabled } from "@/routes/proxy/utils/gemini-client";
-import { getByosVaultKvVersion, isByosEnabled } from "@/secretsmanager";
+import { OrganizationModel } from "@/models";
+import { getByosVaultKvVersion, isByosEnabled } from "@/secrets-manager";
+import { EmailProviderTypeSchema, type GlobalToolPolicy } from "@/types";
+import { KnowledgeGraphProviderTypeSchema } from "@/types/knowledge-graph";
 
 const featuresRoutes: FastifyPluginAsyncZod = async (fastify) => {
   fastify.get(
@@ -27,19 +33,92 @@ const featuresRoutes: FastifyPluginAsyncZod = async (fastify) => {
             byosVaultKvVersion: z.enum(["1", "2"]).nullable(),
             /** Vertex AI Gemini mode - when enabled, no API key needed for Gemini */
             geminiVertexAiEnabled: z.boolean(),
+            /** vLLM mode - when enabled, no API key may be needed */
+            vllmEnabled: z.boolean(),
+            /** Ollama mode - when enabled, no API key is typically needed */
+            ollamaEnabled: z.boolean(),
+            /** Mistral mode - when enabled, Mistral AI provider is available */
+            mistralEnabled: z.boolean(),
+            /** Global tool policy - permissive bypasses policy checks, restrictive enforces them */
+            globalToolPolicy: z.enum(["permissive", "restrictive"]),
+            /** Browser streaming - enables live browser automation via Playwright MCP */
+            browserStreamingEnabled: z.boolean(),
+            /** Incoming email - allows agents to be invoked via email */
+            incomingEmail: z.object({
+              enabled: z.boolean(),
+              provider: EmailProviderTypeSchema.optional(),
+              displayName: z.string().optional(),
+              emailDomain: z.string().optional(),
+            }),
+            /** Knowledge graph - allows document ingestion into knowledge graph on file upload */
+            knowledgeGraph: z.object({
+              enabled: z.boolean(),
+              provider: KnowledgeGraphProviderTypeSchema.optional(),
+              displayName: z.string().optional(),
+            }),
+            /** MCP server base Docker image (shown in UI for reference) */
+            mcpServerBaseImage: z.string(),
+            /** Default K8s namespace for MCP server pods */
+            orchestratorK8sNamespace: z.string(),
+            /** Whether the platform is running in quickstart mode */
+            isQuickstart: z.boolean(),
+            /** ngrok tunnel domain (e.g. "abc123.ngrok-free.app") when ngrok is active */
+            ngrokDomain: z.string(),
+            /** ChatOps configuration status (which fields are set) */
+            chatops: z.object({
+              msTeamsEnabled: z.boolean(),
+              msTeamsAppId: z.boolean(),
+              msTeamsAppSecret: z.boolean(),
+              msTeamsTenantId: z.boolean(),
+            }),
           }),
         },
       },
     },
-    async (_request, reply) =>
-      reply.send({
+    async (_request, reply) => {
+      // Get global tool policy from first organization (fallback to permissive)
+      const org = await OrganizationModel.getFirst();
+      const globalToolPolicy: GlobalToolPolicy =
+        org?.globalToolPolicy ?? "permissive";
+
+      return reply.send({
         ...config.features,
         "orchestrator-k8s-runtime": McpServerRuntimeManager.isEnabled,
         byosEnabled: isByosEnabled(),
         byosVaultKvVersion: getByosVaultKvVersion(),
         geminiVertexAiEnabled: isVertexAiEnabled(),
-      }),
+        vllmEnabled: config.llm.vllm.enabled,
+        ollamaEnabled: config.llm.ollama.enabled,
+        mistralEnabled: true, // Mistral is always enabled (has default base URL)
+        globalToolPolicy,
+        incomingEmail: getEmailProviderInfo(),
+        knowledgeGraph: getKnowledgeGraphProviderInfo(),
+        mcpServerBaseImage: config.orchestrator.mcpServerBaseImage,
+        orchestratorK8sNamespace: config.orchestrator.kubernetes.namespace,
+        isQuickstart: config.isQuickstart,
+        ngrokDomain: getNgrokDomain(),
+        chatops: {
+          msTeamsEnabled: config.chatops.msTeams.enabled,
+          msTeamsAppId: Boolean(config.chatops.msTeams.appId),
+          msTeamsAppSecret: Boolean(config.chatops.msTeams.appSecret),
+          msTeamsTenantId: Boolean(config.chatops.msTeams.tenantId),
+        },
+      });
+    },
   );
 };
 
 export default featuresRoutes;
+
+/**
+ * Get the ngrok domain from env var or from the file written by the
+ * detect-ngrok-domain.sh script (for dynamically assigned domains).
+ */
+function getNgrokDomain(): string {
+  if (config.ngrokDomain) return config.ngrokDomain;
+  try {
+    return readFileSync("/app/data/.ngrok_domain", "utf-8").trim();
+  } catch {
+    return "";
+  }
+}

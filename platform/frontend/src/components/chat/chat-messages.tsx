@@ -1,7 +1,14 @@
 import type { UIMessage } from "@ai-sdk/react";
 import type { ChatStatus, DynamicToolUIPart, ToolUIPart } from "ai";
 import Image from "next/image";
-import { Fragment, useEffect, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   Conversation,
   ConversationContent,
@@ -23,17 +30,33 @@ import {
 } from "@/components/ai-elements/tool";
 import { useChatProfileMcpTools } from "@/lib/chat.query";
 import { useUpdateChatMessage } from "@/lib/chat-message.query";
+import {
+  parseAuthRequired,
+  parsePolicyDenied,
+} from "@/lib/llmProviders/common";
+import { hasThinkingTags, parseThinkingTags } from "@/lib/parse-thinking";
+import { cn } from "@/lib/utils";
+import { AuthRequiredTool } from "./auth-required-tool";
+import { extractFileAttachments, hasTextPart } from "./chat-messages.utils";
 import { EditableAssistantMessage } from "./editable-assistant-message";
 import { EditableUserMessage } from "./editable-user-message";
 import { InlineChatError } from "./inline-chat-error";
+<<<<<<< HEAD
 import { McpAppFrame } from "./mcp-app-frame";
 
 interface ChatMessagesProps {
   conversationId: string | undefined;
   /** Profile (agent) ID for the conversation; used for MCP App resource loading */
+=======
+import { PolicyDeniedTool } from "./policy-denied-tool";
+import { TodoWriteTool } from "./todo-write-tool";
+import { ToolErrorLogsButton } from "./tool-error-logs-button";
+
+interface ChatMessagesProps {
+  conversationId: string | undefined;
+>>>>>>> origin/main
   agentId?: string;
   messages: UIMessage[];
-  hideToolCalls?: boolean;
   status: ChatStatus;
   isLoadingConversation?: boolean;
   onMessagesUpdate?: (messages: UIMessage[]) => void;
@@ -43,6 +66,12 @@ interface ChatMessagesProps {
     editedPartIndex: number,
   ) => void;
   error?: Error | null;
+  // Empty state customization
+  agentName?: string;
+  suggestedPrompt?: string | null;
+  onSuggestedPromptClick?: () => void;
+  /** Hide the decorative arrow pointing to agent selector (e.g., when an overlay is shown) */
+  hideArrow?: boolean;
 }
 
 // Type guards for tool parts
@@ -68,13 +97,19 @@ function isToolPart(part: any): part is {
 export function ChatMessages({
   conversationId,
   agentId,
+<<<<<<< HEAD
+=======
+  agentName,
+  suggestedPrompt,
+  onSuggestedPromptClick,
+>>>>>>> origin/main
   messages,
-  hideToolCalls = false,
   status,
   isLoadingConversation = false,
   onMessagesUpdate,
   onUserMessageEdit,
   error = null,
+  hideArrow = false,
 }: ChatMessagesProps) {
   const { data: profileTools = [] } = useChatProfileMcpTools(agentId);
   const toolMetaByName = Object.fromEntries(
@@ -89,6 +124,18 @@ export function ChatMessages({
 
   // Initialize mutation hook with conversationId (use empty string as fallback for hook rules)
   const updateChatMessageMutation = useUpdateChatMessage(conversationId || "");
+
+  // Debounce resize mode change when exiting edit mode to let DOM settle
+  const isEditing = editingPartKey !== null;
+  const [instantResize, setInstantResize] = useState(false);
+  useLayoutEffect(() => {
+    if (isEditing) {
+      setInstantResize(true);
+    } else {
+      const timeout = setTimeout(() => setInstantResize(false), 100);
+      return () => clearTimeout(timeout);
+    }
+  }, [isEditing]);
 
   const handleStartEdit = (partKey: string, messageId?: string) => {
     setEditingPartKey(partKey);
@@ -150,12 +197,227 @@ export function ChatMessages({
     }
   };
 
+  // Ref for the text position marker
+  const textMarkerRef = useRef<HTMLSpanElement>(null);
+
+  // Calculate arrow dimensions based on actual text position
+  const [arrowDimensions, setArrowDimensions] = useState({
+    width: 400,
+    height: 300,
+    pathD: "M 350 340 Q 300 340 250 340 L 100 340 Q 60 340 60 300 L 60 5",
+    visible: false,
+    left: 248,
+    top: 85,
+  });
+
+  const updateArrowDimensions = useCallback(() => {
+    if (!textMarkerRef.current) return;
+
+    // Get the parent container dimensions (changes when artifact panel opens/closes)
+    const parentContainer = textMarkerRef.current.closest(".flex-1");
+    if (!parentContainer) return;
+
+    const containerRect = parentContainer.getBoundingClientRect();
+    const containerWidth = containerRect.width;
+    const viewportHeight = window.innerHeight;
+
+    // Only show arrow if container has sufficient width and viewport has height
+    const isVisible = containerWidth >= 768 && viewportHeight >= 600;
+
+    if (!isVisible) {
+      setArrowDimensions((prev) => ({ ...prev, visible: false }));
+      return;
+    }
+
+    // Get the actual position of the text marker
+    const textRect = textMarkerRef.current.getBoundingClientRect();
+    const textX = textRect.left;
+    const textY = textRect.top;
+
+    // Agent selector position (top left area)
+    const selectorX = 248;
+    const selectorY = 85;
+
+    // Calculate SVG dimensions - arrow should end at text marker position
+    const svgWidth = Math.max(textX - selectorX, 200); // Width from selector to text
+    const svgHeight = Math.max(textY - selectorY, 100); // Height from selector to text
+
+    // Path coordinates (relative to SVG origin)
+    // Arrow tip at top left
+    const _startX = 60;
+    const startY = 5;
+    // End point should be exactly at the text marker position
+    const endX = svgWidth; // No margin - end exactly at text
+    const endY = svgHeight - 10;
+    // Curve control point
+    const curveY = endY - 40;
+
+    setArrowDimensions({
+      width: svgWidth,
+      height: svgHeight,
+      pathD: `M ${endX} ${endY} Q ${endX - 50} ${endY} ${endX - 100} ${endY} L 100 ${endY} Q 60 ${endY} 60 ${curveY} L 60 ${startY}`,
+      visible: isVisible,
+      left: selectorX,
+      top: selectorY,
+    });
+  }, []);
+
+  useEffect(() => {
+    // Initial calculation after mount
+    const timer = setTimeout(updateArrowDimensions, 100);
+
+    // Update on window resize
+    window.addEventListener("resize", updateArrowDimensions);
+
+    // Use ResizeObserver to detect when the parent container changes size
+    // This will trigger when the artifact panel opens/closes or height changes
+    const resizeObserver = new ResizeObserver((entries) => {
+      // Check if height actually changed (not just width)
+      for (const _entry of entries) {
+        updateArrowDimensions();
+      }
+    });
+
+    // Find the main content area that actually resizes when artifact panel toggles
+    // Look for the parent that contains the overflow-y-auto class
+    const parentContainer =
+      textMarkerRef.current?.closest(".overflow-y-auto")?.parentElement
+        ?.parentElement;
+    if (parentContainer) {
+      resizeObserver.observe(parentContainer);
+    }
+
+    // Also observe the direct parent for vertical size changes
+    const directParent = textMarkerRef.current?.closest(".overflow-y-auto");
+    if (directParent) {
+      resizeObserver.observe(directParent);
+    }
+
+    // Also add a small delay and retry to ensure element is found
+    const retryTimer = setTimeout(() => {
+      if (!parentContainer && textMarkerRef.current) {
+        const container =
+          textMarkerRef.current.closest(".overflow-y-auto")?.parentElement
+            ?.parentElement;
+        if (container) {
+          resizeObserver.observe(container);
+        }
+        const direct = textMarkerRef.current.closest(".overflow-y-auto");
+        if (direct) {
+          resizeObserver.observe(direct);
+        }
+      }
+    }, 500);
+
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(retryTimer);
+      window.removeEventListener("resize", updateArrowDimensions);
+      resizeObserver.disconnect();
+    };
+  }, [updateArrowDimensions]);
+
+  // Recalculate arrow when agent name changes
+  useEffect(() => {
+    if (agentName) {
+      // Small delay to ensure DOM has updated with new agent name
+      const timer = setTimeout(updateArrowDimensions, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [agentName, updateArrowDimensions]);
+
   if (messages.length === 0) {
     // Don't show "start conversation" message while loading - prevents flash of empty state
     if (isLoadingConversation) {
       return null;
     }
 
+    // Unified empty state for both new chat and existing chat with no messages
+    if (agentName) {
+      return (
+        <div className="flex items-center justify-center h-full relative">
+          {/* Custom bent arrow pointing to agent selector - hidden on mobile */}
+          {arrowDimensions.visible && !hideArrow && (
+            <svg
+              className="fixed pointer-events-none z-50"
+              width={arrowDimensions.width}
+              height={arrowDimensions.height}
+              style={{
+                top: `${arrowDimensions.top}px`,
+                left: `${arrowDimensions.left}px`,
+              }}
+              aria-hidden="true"
+            >
+              <title>Arrow pointing to agent selector</title>
+              <defs>
+                <marker
+                  id="arrowhead"
+                  markerWidth="10"
+                  markerHeight="7"
+                  refX="9"
+                  refY="3.5"
+                  orient="auto"
+                >
+                  <polygon
+                    points="0 0, 10 3.5, 0 7"
+                    fill="rgb(156, 163, 175)"
+                    strokeWidth="0"
+                    opacity="0.6"
+                  />
+                </marker>
+              </defs>
+              <path
+                d={arrowDimensions.pathD}
+                stroke="rgb(156, 163, 175)"
+                strokeWidth="2"
+                fill="none"
+                strokeDasharray="5,5"
+                markerEnd="url(#arrowhead)"
+                opacity="0.5"
+              />
+            </svg>
+          )}
+
+          <div className="text-center space-y-6 max-w-2xl px-4 relative">
+            <p className="text-lg text-muted-foreground relative">
+              <span
+                ref={textMarkerRef}
+                className="absolute -left-4 top-1/2 -translate-y-1/2 w-0 h-0"
+                aria-hidden="true"
+              />
+              Chat with{" "}
+              <span className="font-medium text-foreground truncate inline-block max-w-sm align-bottom">
+                {agentName}
+              </span>{" "}
+              agent,
+              <br />
+              or{" "}
+              <a
+                href="/agents?create=true"
+                className="text-primary hover:underline"
+              >
+                create a new one
+              </a>
+            </p>
+            {suggestedPrompt && onSuggestedPromptClick && (
+              <button
+                type="button"
+                onClick={onSuggestedPromptClick}
+                className="w-full text-left cursor-pointer hover:opacity-80 transition-opacity"
+              >
+                <Message from="assistant" className="max-w-none justify-center">
+                  <MessageContent className="max-w-none text-left">
+                    <Response>{suggestedPrompt}</Response>
+                  </MessageContent>
+                </Message>
+              </button>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // Fallback for when no agent name is provided
     return (
       <div className="flex-1 flex h-full items-center justify-center text-center text-muted-foreground">
         <p className="text-sm">Start a conversation by sending a message</p>
@@ -187,22 +449,23 @@ export function ChatMessages({
     return nextMessage.role !== "assistant";
   });
 
+  const isResponseInProgress = status === "streaming" || status === "submitted";
+
   return (
-    <Conversation className="h-full">
+    <Conversation
+      className="h-full"
+      resize={instantResize ? "instant" : "smooth"}
+    >
       <ConversationContent>
         <div className="max-w-4xl mx-auto">
           {messages.map((message, idx) => {
-            // Hide messages below the one being edited (for user messages only)
-            if (
-              editingMessageIndex !== -1 &&
-              idx > editingMessageIndex &&
-              editingPartKey?.startsWith(messages[editingMessageIndex].id)
-            ) {
-              return null;
-            }
-
+            const isDimmed =
+              editingMessageIndex !== -1 && idx > editingMessageIndex;
             return (
-              <div key={message.id || idx}>
+              <div
+                key={message.id || idx}
+                className={cn(isDimmed && "opacity-40 transition-opacity")}
+              >
                 {message.parts?.map((part, i) => {
                   // Skip tool result parts that immediately follow a tool invocation with same toolCallId
                   if (
@@ -220,19 +483,23 @@ export function ChatMessages({
                     }
                   }
 
-                  // Hide tool calls if hideToolCalls is true
-                  if (
-                    hideToolCalls &&
-                    isToolPart(part) &&
-                    (part.type?.startsWith("tool-") ||
-                      part.type === "dynamic-tool")
-                  ) {
-                    return null;
-                  }
-
                   switch (part.type) {
                     case "text": {
                       const partKey = `${message.id}-${i}`;
+
+                      // Anthropic sends policy denials as text blocks (see MessageTool for OpenAI path)
+                      const policyDenied = parsePolicyDenied(part.text);
+                      if (policyDenied) {
+                        return (
+                          <PolicyDeniedTool
+                            key={partKey}
+                            policyDenied={policyDenied}
+                            {...(agentId
+                              ? { editable: true, profileId: agentId }
+                              : { editable: false })}
+                          />
+                        );
+                      }
 
                       // Use editable component for assistant messages
                       if (message.role === "assistant") {
@@ -256,6 +523,56 @@ export function ChatMessages({
                           isLastTextPart &&
                           status !== "streaming";
 
+                        // Check for <think> tags (used by Qwen and similar models)
+                        if (hasThinkingTags(part.text)) {
+                          const parsedParts = parseThinkingTags(part.text);
+                          return (
+                            <Fragment key={partKey}>
+                              {parsedParts.map((parsedPart, parsedIdx) => {
+                                const parsedKey = `${partKey}-parsed-${parsedIdx}`;
+                                if (parsedPart.type === "reasoning") {
+                                  return (
+                                    <Reasoning
+                                      key={parsedKey}
+                                      className="w-full"
+                                    >
+                                      <ReasoningTrigger />
+                                      <ReasoningContent>
+                                        {parsedPart.text}
+                                      </ReasoningContent>
+                                    </Reasoning>
+                                  );
+                                }
+                                // Render text parts - show actions only on the last text part
+                                const isLastParsedTextPart =
+                                  parsedIdx ===
+                                  parsedParts.length -
+                                    1 -
+                                    [...parsedParts]
+                                      .reverse()
+                                      .findIndex((p) => p.type === "text");
+                                return (
+                                  <EditableAssistantMessage
+                                    key={parsedKey}
+                                    messageId={message.id}
+                                    partIndex={i}
+                                    partKey={partKey}
+                                    text={parsedPart.text}
+                                    isEditing={editingPartKey === partKey}
+                                    showActions={
+                                      showActions && isLastParsedTextPart
+                                    }
+                                    editDisabled={isResponseInProgress}
+                                    onStartEdit={handleStartEdit}
+                                    onCancelEdit={handleCancelEdit}
+                                    onSave={handleSaveAssistantMessage}
+                                  />
+                                );
+                              })}
+                            </Fragment>
+                          );
+                        }
+
                         return (
                           <Fragment key={partKey}>
                             <EditableAssistantMessage
@@ -265,6 +582,7 @@ export function ChatMessages({
                               text={part.text}
                               isEditing={editingPartKey === partKey}
                               showActions={showActions}
+                              editDisabled={isResponseInProgress}
                               onStartEdit={handleStartEdit}
                               onCancelEdit={handleCancelEdit}
                               onSave={handleSaveAssistantMessage}
@@ -283,6 +601,10 @@ export function ChatMessages({
                               partKey={partKey}
                               text={part.text}
                               isEditing={editingPartKey === partKey}
+                              editDisabled={isResponseInProgress}
+                              attachments={extractFileAttachments(
+                                message.parts,
+                              )}
                               onStartEdit={handleStartEdit}
                               onCancelEdit={handleCancelEdit}
                               onSave={handleSaveUserMessage}
@@ -319,6 +641,120 @@ export function ChatMessages({
                         </Reasoning>
                       );
 
+                    case "file": {
+                      // User file attachments are normally rendered inside EditableUserMessage
+                      // But if there's no text part, we need to render them here
+                      if (message.role === "user") {
+                        // If there's a text part, files will be rendered with EditableUserMessage
+                        if (hasTextPart(message.parts)) {
+                          return null;
+                        }
+
+                        // For file-only messages, render on the first file part only
+                        const isFirstFilePart =
+                          message.parts?.findIndex((p) => p.type === "file") ===
+                          i;
+
+                        if (!isFirstFilePart) {
+                          return null;
+                        }
+
+                        const partKey = `${message.id}-${i}`;
+
+                        return (
+                          <Fragment key={partKey}>
+                            <EditableUserMessage
+                              messageId={message.id}
+                              partIndex={i}
+                              partKey={partKey}
+                              text=""
+                              isEditing={editingPartKey === partKey}
+                              editDisabled={isResponseInProgress}
+                              attachments={extractFileAttachments(
+                                message.parts,
+                              )}
+                              onStartEdit={handleStartEdit}
+                              onCancelEdit={handleCancelEdit}
+                              onSave={handleSaveUserMessage}
+                            />
+                          </Fragment>
+                        );
+                      }
+
+                      // Render file attachments for assistant/system messages
+                      const filePart = part as {
+                        type: "file";
+                        url: string;
+                        mediaType: string;
+                        filename?: string;
+                      };
+                      const isImage = filePart.mediaType?.startsWith("image/");
+                      const isVideo = filePart.mediaType?.startsWith("video/");
+                      const isPdf = filePart.mediaType === "application/pdf";
+
+                      return (
+                        <div
+                          key={`${message.id}-${i}`}
+                          className="py-1 -mt-2 flex justify-start"
+                        >
+                          <div className="max-w-sm">
+                            {isImage && (
+                              <img
+                                src={filePart.url}
+                                alt={filePart.filename || "Attached image"}
+                                className="max-w-full max-h-64 rounded-lg object-contain"
+                              />
+                            )}
+                            {isVideo && (
+                              <video
+                                src={filePart.url}
+                                controls
+                                className="max-w-full max-h-64 rounded-lg"
+                              >
+                                <track kind="captions" />
+                              </video>
+                            )}
+                            {isPdf && (
+                              <div className="flex items-center gap-2 text-sm rounded-lg border bg-muted/50 p-2">
+                                <svg
+                                  className="h-6 w-6 text-red-500"
+                                  fill="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <title>PDF Document</title>
+                                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 2l5 5h-5V4zm-3 9h2v2H10v-2zm0 3h2v2H10v-2zm-3-3h2v2H7v-2zm0 3h2v2H7v-2z" />
+                                </svg>
+                                <span className="font-medium truncate">
+                                  {filePart.filename || "PDF Document"}
+                                </span>
+                              </div>
+                            )}
+                            {!isImage && !isVideo && !isPdf && (
+                              <div className="flex items-center gap-2 text-sm rounded-lg border bg-muted/50 p-2">
+                                <svg
+                                  className="h-5 w-5 text-muted-foreground"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <title>File Attachment</title>
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+                                  />
+                                </svg>
+                                <span className="truncate">
+                                  {filePart.filename || "Attached file"}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    }
+
                     case "dynamic-tool": {
                       if (!isToolPart(part)) return null;
                       const toolName = part.toolName;
@@ -343,7 +779,10 @@ export function ChatMessages({
                           toolResultPart={toolResultPart}
                           toolName={toolName}
                           agentId={agentId}
+<<<<<<< HEAD
                           toolMeta={toolMetaByName[toolName]}
+=======
+>>>>>>> origin/main
                         />
                       );
                     }
@@ -374,7 +813,10 @@ export function ChatMessages({
                             toolResultPart={toolResultPart}
                             toolName={toolName}
                             agentId={agentId}
+<<<<<<< HEAD
                             toolMeta={toolMetaByName[toolName]}
+=======
+>>>>>>> origin/main
                           />
                         );
                       }
@@ -452,13 +894,19 @@ function MessageTool({
   toolResultPart,
   toolName,
   agentId,
+<<<<<<< HEAD
   toolMeta,
+=======
+>>>>>>> origin/main
 }: {
   part: ToolUIPart | DynamicToolUIPart;
   toolResultPart: ToolUIPart | DynamicToolUIPart | null;
   toolName: string;
   agentId?: string;
+<<<<<<< HEAD
   toolMeta?: { ui?: { resourceUri?: string } };
+=======
+>>>>>>> origin/main
 }) {
   const outputError = toolResultPart
     ? tryToExtractErrorFromOutput(toolResultPart.output)
@@ -466,6 +914,43 @@ function MessageTool({
   const errorText = toolResultPart
     ? (toolResultPart.errorText ?? outputError)
     : (part.errorText ?? outputError);
+
+  // OpenAI sends policy denials as tool errors (see case "text" above for Anthropic path)
+  if (errorText) {
+    const policyDenied = parsePolicyDenied(errorText);
+    if (policyDenied) {
+      return (
+        <PolicyDeniedTool
+          policyDenied={policyDenied}
+          {...(agentId
+            ? { editable: true, profileId: agentId }
+            : { editable: false })}
+        />
+      );
+    }
+
+    const authRequired = parseAuthRequired(errorText);
+    if (authRequired) {
+      return (
+        <AuthRequiredTool
+          toolName={toolName}
+          catalogName={authRequired.catalogName}
+          installUrl={authRequired.installUrl}
+        />
+      );
+    }
+  }
+
+  // Check if this is the todo_write tool from Archestra
+  if (toolName === "archestra__todo_write") {
+    return (
+      <TodoWriteTool
+        part={part}
+        toolResultPart={toolResultPart}
+        errorText={errorText}
+      />
+    );
+  }
 
   const hasInput = part.input && Object.keys(part.input).length > 0;
   const effectiveResultPart = toolResultPart ?? (part.state === "output-available" ? part : null);
@@ -475,12 +960,19 @@ function MessageTool({
       (!toolResultPart && Boolean(part.output)),
   );
 
+<<<<<<< HEAD
   const resourceUri = toolMeta?.ui?.resourceUri;
   const showMcpApp =
     Boolean(agentId) &&
     Boolean(resourceUri) &&
     Boolean(effectiveResultPart) &&
     !errorText;
+=======
+  // Show logs button for failed tool calls
+  const logsButton = errorText ? (
+    <ToolErrorLogsButton toolName={toolName} />
+  ) : null;
+>>>>>>> origin/main
 
   return (
     <Tool className={hasContent ? "cursor-pointer" : ""}>
@@ -493,6 +985,7 @@ function MessageTool({
         })}
         errorText={errorText}
         isCollapsible={hasContent}
+        actionButton={logsButton}
       />
       <ToolContent>
         {hasInput ? <ToolInput input={part.input} /> : null}

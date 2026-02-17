@@ -12,35 +12,36 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { usePromptVersions, useRollbackPrompt } from "@/lib/prompts.query";
+import { useAgentVersions, useRollbackAgent } from "@/lib/agent.query";
 import { formatDate } from "@/lib/utils";
 import { TruncatedText } from "../truncated-text";
 
-type Prompt = archestraApiTypes.GetPromptsResponses["200"][number];
+type InternalAgent = archestraApiTypes.GetAllAgentsResponses["200"][number];
+type HistoryEntry = NonNullable<
+  archestraApiTypes.GetAgentVersionsResponses["200"]
+>["history"][number];
 
 interface PromptVersionHistoryDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  prompt: Prompt | null;
+  agent: InternalAgent | null;
 }
 
 export function PromptVersionHistoryDialog({
   open,
   onOpenChange,
-  prompt,
+  agent,
 }: PromptVersionHistoryDialogProps) {
-  const { data: versions = [], isLoading } = usePromptVersions(
-    prompt?.id || "",
-  );
-  const rollbackMutation = useRollbackPrompt();
+  const { data: versions, isLoading } = useAgentVersions(agent?.id);
+  const rollbackMutation = useRollbackAgent();
 
-  const handleRollback = async (versionId: string) => {
-    if (!prompt) return;
+  const handleRollback = async (version: number) => {
+    if (!agent) return;
 
     try {
       await rollbackMutation.mutateAsync({
-        id: prompt.id,
-        versionId,
+        id: agent.id,
+        version,
       });
       toast.success("Rolled back to selected version");
       onOpenChange(false);
@@ -49,13 +50,18 @@ export function PromptVersionHistoryDialog({
     }
   };
 
+  const current = versions?.current;
+  const history = [...(versions?.history ?? [])].sort(
+    (a, b) => b.version - a.version,
+  );
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Version History: {prompt?.name}</DialogTitle>
+          <DialogTitle>Version History: {agent?.name}</DialogTitle>
           <DialogDescription>
-            View and rollback to previous versions of this prompt
+            View and rollback to previous versions of this agent
           </DialogDescription>
         </DialogHeader>
 
@@ -65,74 +71,117 @@ export function PromptVersionHistoryDialog({
           </div>
         ) : (
           <div className="space-y-3">
-            {(versions as Prompt[]).map((version) => {
-              return (
-                <div
-                  key={version.id}
-                  className="border rounded-lg p-4 space-y-2"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">
-                        Version {version.version}
-                      </span>
-                      {version.isActive && (
-                        <Badge variant="default" className="text-xs">
-                          <Check className="h-3 w-3 mr-1" />
-                          Current
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">
-                        {formatDate({ date: version.createdAt })}
-                      </span>
-                      {!version.isActive && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleRollback(version.id)}
-                          disabled={rollbackMutation.isPending}
-                        >
-                          <RotateCcw className="h-3 w-3 mr-1" />
-                          Rollback
-                        </Button>
-                      )}
+            {/* Current version */}
+            {current && (
+              <div className="border rounded-lg p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">
+                      Version {current.promptVersion}
+                    </span>
+                    <Badge variant="default" className="text-xs">
+                      <Check className="h-3 w-3 mr-1" />
+                      Current
+                    </Badge>
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {formatDate({ date: current.updatedAt })}
+                  </span>
+                </div>
+
+                {current.systemPrompt && (
+                  <div className="text-xs">
+                    <span className="font-medium text-muted-foreground">
+                      System Prompt:
+                    </span>
+                    <div className="mt-1">
+                      <TruncatedText
+                        message={current.systemPrompt}
+                        className="text-foreground"
+                        maxLength={100}
+                      />
                     </div>
                   </div>
+                )}
 
-                  {version.systemPrompt && (
-                    <div className="text-xs">
-                      <span className="font-medium text-muted-foreground">
-                        System Prompt:
-                      </span>
-                      <div className="mt-1">
-                        <TruncatedText
-                          message={version.systemPrompt}
-                          className="text-foreground"
-                          maxLength={100}
-                        />
-                      </div>
+                {current.userPrompt && (
+                  <div className="text-xs">
+                    <span className="font-medium text-muted-foreground">
+                      User Prompt:
+                    </span>
+                    <div className="mt-1">
+                      <TruncatedText
+                        message={current.userPrompt}
+                        className="text-foreground"
+                        maxLength={100}
+                      />
                     </div>
-                  )}
+                  </div>
+                )}
+              </div>
+            )}
 
-                  {version.userPrompt && (
-                    <div className="text-xs">
-                      <span className="font-medium text-muted-foreground">
-                        User Prompt:
-                      </span>
-                      <div className="mt-1">
-                        <TruncatedText
-                          message={version.userPrompt}
-                          className="text-foreground"
-                          maxLength={100}
-                        />
-                      </div>
-                    </div>
-                  )}
+            {/* History versions */}
+            {history.map((entry: HistoryEntry) => (
+              <div
+                key={entry.version}
+                className="border rounded-lg p-4 space-y-2"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">Version {entry.version}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">
+                      {formatDate({ date: entry.createdAt })}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleRollback(entry.version)}
+                      disabled={rollbackMutation.isPending}
+                    >
+                      <RotateCcw className="h-3 w-3 mr-1" />
+                      Rollback
+                    </Button>
+                  </div>
                 </div>
-              );
-            })}
+
+                {entry.systemPrompt && (
+                  <div className="text-xs">
+                    <span className="font-medium text-muted-foreground">
+                      System Prompt:
+                    </span>
+                    <div className="mt-1">
+                      <TruncatedText
+                        message={entry.systemPrompt}
+                        className="text-foreground"
+                        maxLength={100}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {entry.userPrompt && (
+                  <div className="text-xs">
+                    <span className="font-medium text-muted-foreground">
+                      User Prompt:
+                    </span>
+                    <div className="mt-1">
+                      <TruncatedText
+                        message={entry.userPrompt}
+                        className="text-foreground"
+                        maxLength={100}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {history.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No previous versions
+              </p>
+            )}
           </div>
         )}
       </DialogContent>

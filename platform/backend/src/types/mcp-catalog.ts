@@ -7,7 +7,11 @@ import {
 import { z } from "zod";
 import { schema } from "@/database";
 
-export const InternalMcpCatalogServerTypeSchema = z.enum(["local", "remote"]);
+export const InternalMcpCatalogServerTypeSchema = z.enum([
+  "local",
+  "remote",
+  "builtin",
+]);
 
 // Define Zod schemas for complex JSONB fields
 const AuthFieldSchema = z.object({
@@ -48,13 +52,16 @@ const LocalConfigSelectSchema = z.object({
         required: z.boolean().optional(), // Optional in database
         description: z.string().optional(), // Optional in database
         default: z.union([z.string(), z.number(), z.boolean()]).optional(), // Default value for installation dialog
+        mounted: z.boolean().optional(), // When true for secret type, mount as file at /secrets/<key>
       }),
     )
     .optional(),
   dockerImage: z.string().optional(),
+  serviceAccount: z.string().optional(),
   transportType: z.enum(["stdio", "streamable-http"]).optional(),
   httpPort: z.number().optional(),
   httpPath: z.string().optional(),
+  nodePort: z.number().optional(),
 });
 
 export const SelectInternalMcpCatalogSchema = createSelectSchema(
@@ -71,6 +78,9 @@ export const InsertInternalMcpCatalogSchema = createInsertSchema(
   schema.internalMcpCatalogTable,
 )
   .extend({
+    // Allow explicit ID for builtin catalog items (e.g., Archestra)
+    id: z.string().uuid().optional(),
+    name: z.string().trim().min(1, "Name cannot be empty"),
     serverType: InternalMcpCatalogServerTypeSchema,
     authFields: z.array(AuthFieldSchema).nullable().optional(),
     userConfig: z
@@ -81,7 +91,6 @@ export const InsertInternalMcpCatalogSchema = createInsertSchema(
     localConfig: LocalConfigSchema.nullable().optional(),
   })
   .omit({
-    id: true,
     createdAt: true,
     updatedAt: true,
   });
@@ -90,6 +99,7 @@ export const UpdateInternalMcpCatalogSchema = createUpdateSchema(
   schema.internalMcpCatalogTable,
 )
   .extend({
+    name: z.string().trim().min(1, "Name cannot be empty"),
     serverType: InternalMcpCatalogServerTypeSchema,
     authFields: z.array(AuthFieldSchema).nullable().optional(),
     userConfig: z
@@ -108,6 +118,9 @@ export const UpdateInternalMcpCatalogSchema = createUpdateSchema(
 export type InternalMcpCatalogServerType = z.infer<
   typeof InternalMcpCatalogServerTypeSchema
 >;
+
+// Export LocalConfig type for reuse in database schema
+export type LocalConfig = z.infer<typeof LocalConfigSelectSchema>;
 
 export type InternalMcpCatalog = z.infer<typeof SelectInternalMcpCatalogSchema>;
 export type InsertInternalMcpCatalog = z.infer<

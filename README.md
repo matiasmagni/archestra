@@ -1,4 +1,4 @@
-# MCP-native Centralized AI Platform
+# MCP-native Secure AI Platform
 
 Simplify AI usage in your company, providing user-friendly MCP toolbox, observability and control built on a strong security foundation.
 
@@ -12,7 +12,7 @@ Simplify AI usage in your company, providing user-friendly MCP toolbox, observab
 <p align="center">
   <a href="https://www.archestra.ai/docs/platform-quickstart">Getting Started</a>
   - <a href="https://github.com/archestra-ai/archestra/releases">Releases</a>
-  - <a href="https://join.slack.com/t/archestracommunity/shared_invite/zt-39yk4skox-zBF1NoJ9u4t59OU8XxQChg">Slack Community</a>
+  - <a href="https://join.slack.com/t/archestracommunity/shared_invite/zt-3d3ifjzg0-y2Z93cLLkZgRAooRpNu7ZA">Slack Community</a>
 </p>
 </div>
 
@@ -31,6 +31,41 @@ Simplify AI usage in your company, providing user-friendly MCP toolbox, observab
 - Bring 1-click MCP adoption to the whole organization for technical and non-technical users
 - Reduce AI costs up to 96%
 - Get full visibility on AI adoption, usage and data access
+
+
+## 🚀 Quickstart with docker
+
+```
+docker pull archestra/platform:latest;
+docker run -p 9000:9000 -p 3000:3000 \
+  -e ARCHESTRA_QUICKSTART=true \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v archestra-postgres-data:/var/lib/postgresql/data \
+  -v archestra-app-data:/app/data \
+  archestra/platform;
+```
+
+[Full Quickstart Guide →](https://archestra.ai/docs/platform-quickstart)
+
+
+<picture>
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset="
+      https://api.star-history.com/svg?repos=archestra-ai/archestra&type=Date&theme=dark
+    "
+  />
+  <source
+    media="(prefers-color-scheme: light)"
+    srcset="
+      https://api.star-history.com/svg?repos=archestra-ai/archestra&type=Date
+    "
+  />
+  <img
+    alt="Star History Chart"
+    src="https://api.star-history.com/svg?repos=archestra-ai/archestra&type=Date"
+  />
+</picture>
 
 ## 👩‍💻 ChatGPT-like chat with MCPs
 
@@ -111,37 +146,6 @@ Metrics, traces and logs allowing to come to a conclusion about per-org, per-age
 1. ✅ Lightning fast, 45ms at 95p: [Performance & Latency benchmarks →](https://archestra.ai/docs/platform-performance-benchmarks)
 2. ✅ [Terraform provider →](https://github.com/archestra-ai/terraform-provider-archestra)
 3. ✅ [Helm Chart →](https://archestra.ai/docs/platform-deployment#helm-deployment-recommended-for-production)
-
-## 🚀 Quickstart
-
-[Full Quickstart Guide →](https://archestra.ai/docs/platform-quickstart)
-
-1. Start with Docker
-
-```
-docker pull archestra/platform:latest;
-docker run -p 9000:9000 -p 3000:3000 \
-  -e ARCHESTRA_QUICKSTART=true \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v archestra-postgres-data:/var/lib/postgresql/data \
-  -v archestra-app-data:/app/data \
-  archestra/platform;
-```
-
-2. Open <http://localhost:3000>
-
-3. The platform is now running with:
-   - Web UI at <http://localhost:3000>
-   - Proxy at <http://localhost:9000>
-
-**Examples & Integrations:**
-- [LangChain Integration →](https://archestra.ai/docs/platform-langchain-example)
-- [Mastra.ai Integration →](https://archestra.ai/docs/platform-mastra-example)
-- [N8N Integration →](https://archestra.ai/docs/platform-n8n-example)
-- [OpenWebUI Integration →](https://archestra.ai/docs/platform-openwebui-example)
-- [Pydantic AI Integration →](https://archestra.ai/docs/platform-pydantic-example)
-- [Vercel AI Integration →](https://archestra.ai/docs/platform-vercel-ai-example)
-
 
 ## 🤝 Contributing
 

@@ -1,5 +1,8 @@
+import * as Sentry from "@sentry/nextjs";
+import type { ApiError } from "@shared";
 import { type ClassValue, clsx } from "clsx";
 import { format } from "date-fns";
+import { toast } from "sonner";
 import { twMerge } from "tailwind-merge";
 
 export const DEFAULT_TABLE_LIMIT = 10;
@@ -27,6 +30,7 @@ export function formatDate({
   return format(new Date(date), dateFormat);
 }
 
+<<<<<<< HEAD
 /**
  * Unwrap a Node-style error `code` from nested error objects (AggregateError, cause, errors[]).
  * Used by server routes to detect network errors like ECONNREFUSED.
@@ -50,4 +54,15 @@ export function unwrapNetworkErrorCode(error: unknown): string | undefined {
     if (typeof nested === "string") return nested;
   }
   return undefined;
+=======
+export function handleApiError(error: { error: Partial<ApiError> | Error }) {
+  if (typeof window !== "undefined") {
+    // we show toast only on the client side
+    toast.error(error.error?.message ?? "API request failed");
+  }
+  // capture exception on Sentry
+  Sentry.captureException(error);
+  // we log the error on the server side
+  console.error(error);
+>>>>>>> origin/main
 }

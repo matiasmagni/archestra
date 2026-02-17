@@ -1,37 +1,39 @@
 {
   "name": "@shared",
-  "version": "0.0.12",
+  "version": "1.0.44",
   "description": "",
   "type": "module",
   "private": true,
   "exports": {
     ".": "./index.ts",
-    "./access-control": "./access-control.ts",
-    "./access-control.ee": "./access-control.ee.ts"
+    "./access-control": "./access-control.ts"
   },
   "scripts": {
     "lint": "biome check",
     "lint:fix": "biome check --write",
     "lint:fix:unsafe": "biome check --write --unsafe",
     "type-check": "tsc --noEmit",
+    "test": "vitest",
     "codegen:api-client": "tsx hey-api/openapi-ts.ts && biome check --write ./hey-api/clients",
     "codegen:theme-css": "tsx ./themes/generate-theme-css.ts",
     "codegen": "pnpm codegen:api-client && pnpm codegen:theme-css",
-    "check:ci": "pnpm type-check && pnpm knip && biome ci",
+    "check:ci": "pnpm type-check && pnpm test && pnpm knip && biome ci",
+    "check:commit": "pnpm type-check && pnpm knip && biome ci",
     "knip": "knip"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "better-auth": "1.4.6-beta.3",
-    "zod": "^4.1.13"
+    "better-auth": "1.4.17",
+    "zod": "^4.3.4"
   },
   "devDependencies": {
-    "@hey-api/openapi-ts": "^0.88.1",
-    "@types/node": "^24",
-    "knip": "^5.72.0",
+    "@hey-api/openapi-ts": "^0.92.3",
+    "@types/node": "^25",
+    "knip": "^5.83.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "vitest": "^4.0.18"
   }
 }

@@ -3,9 +3,9 @@
 import type { archestraApiTypes } from "@shared";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
-import { Suspense } from "react";
 import { ErrorBoundary } from "@/app/_parts/error-boundary";
 import ChatBotDemo from "@/components/chatbot-demo";
+import { CopyButton } from "@/components/copy-button";
 import Divider from "@/components/divider";
 import { LoadingSpinner } from "@/components/loading";
 import { Savings } from "@/components/savings";
@@ -17,9 +17,13 @@ import {
 } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { useDualLlmResultsByInteraction } from "@/lib/dual-llm-result.query";
 import { useInteraction } from "@/lib/interaction.query";
-import { DynamicInteraction } from "@/lib/interaction.utils";
+import {
+  calculateCostSavings,
+  DynamicInteraction,
+} from "@/lib/interaction.utils";
 import { formatDate } from "@/lib/utils";
 
 export function ChatPage({
@@ -35,9 +39,7 @@ export function ChatPage({
   return (
     <div className="w-full h-full overflow-y-auto">
       <ErrorBoundary>
-        <Suspense fallback={<LoadingSpinner />}>
-          <LogDetail initialData={initialData} id={id} />
-        </Suspense>
+        <LogDetail initialData={initialData} id={id} />
       </ErrorBoundary>
     </div>
   );
@@ -53,7 +55,7 @@ function LogDetail({
   };
   id: string;
 }) {
-  const { data: dynamicInteraction } = useInteraction({
+  const { data: dynamicInteraction, isPending } = useInteraction({
     interactionId: id,
     initialData: initialData?.interaction,
   });
@@ -61,6 +63,10 @@ function LogDetail({
   const { data: allDualLlmResults = [] } = useDualLlmResultsByInteraction({
     interactionId: id,
   });
+
+  if (isPending) {
+    return <LoadingSpinner />;
+  }
 
   if (!dynamicInteraction) {
     return (
@@ -113,10 +119,22 @@ function LogDetail({
               </div>
               <div>
                 <div className="text-sm text-muted-foreground mb-2">
-                  External Agent ID
+                  External Agent
                 </div>
                 <div className="font-medium font-mono">
                   {dynamicInteraction.externalAgentId || (
+                    <span className="text-muted-foreground font-normal">
+                      Not set
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground mb-2">
+                  Execution ID
+                </div>
+                <div className="font-medium font-mono">
+                  {dynamicInteraction.executionId || (
                     <span className="text-muted-foreground font-normal">
                       Not set
                     </span>
@@ -163,49 +181,45 @@ function LogDetail({
                   <div className="text-muted-foreground">None</div>
                 )}
               </div>
-              {dynamicInteraction.cost && dynamicInteraction.baselineCost && (
-                <div>
-                  <div className="text-sm text-muted-foreground mb-2">
-                    Cost savings
-                  </div>
-                  <div className="flex gap-3">
-                    <Savings
-                      cost={dynamicInteraction.cost}
-                      baselineCost={dynamicInteraction.baselineCost}
-                      format="percent"
-                      tooltip="always"
-                    />
-                  </div>
-                </div>
-              )}
               {(() => {
-                const toonSavings = interaction.getToonSavings();
-                if (!toonSavings) return null;
-
-                const percentage =
-                  toonSavings.percentageSaved % 1 === 0
-                    ? toonSavings.percentageSaved.toFixed(0)
-                    : toonSavings.percentageSaved.toFixed(1);
+                const savings = calculateCostSavings(dynamicInteraction);
+                const effectiveCost = dynamicInteraction.cost || "0";
+                const effectiveBaselineCost =
+                  dynamicInteraction.baselineCost ||
+                  dynamicInteraction.cost ||
+                  "0";
 
                 return (
                   <div>
                     <div className="text-sm text-muted-foreground mb-2">
-                      TOON Compression Savings
+                      Cost
                     </div>
-                    <div className="space-y-1">
-                      <div className="text-green-600 dark:text-green-400 font-medium">
-                        -{percentage}%
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {toonSavings.savedCharacters.toLocaleString()}{" "}
-                        {toonSavings.savedCharacters === 1 ? "token" : "tokens"}{" "}
-                        saved ({toonSavings.compressedSize.toLocaleString()} /{" "}
-                        {toonSavings.originalSize.toLocaleString()})
-                      </div>
+                    <div className="flex gap-3">
+                      <TooltipProvider>
+                        <Savings
+                          cost={effectiveCost}
+                          baselineCost={effectiveBaselineCost}
+                          toonCostSavings={dynamicInteraction.toonCostSavings}
+                          toonTokensSaved={savings.toonTokensSaved}
+                          toonSkipReason={dynamicInteraction.toonSkipReason}
+                          format="percent"
+                          tooltip="always"
+                          variant="interaction"
+                          baselineModel={dynamicInteraction.baselineModel}
+                          actualModel={dynamicInteraction.model}
+                        />
+                      </TooltipProvider>
                     </div>
                   </div>
                 );
               })()}
+              <div>
+                <div className="text-sm text-muted-foreground mb-2">Tokens</div>
+                <div className="font-mono text-sm">
+                  {(dynamicInteraction.inputTokens ?? 0).toLocaleString()} in /{" "}
+                  {(dynamicInteraction.outputTokens ?? 0).toLocaleString()} out
+                </div>
+              </div>
               {isDualLlmRelevant && (
                 <div>
                   <div className="text-sm text-muted-foreground mb-2">
@@ -232,11 +246,12 @@ function LogDetail({
 
         <div className="mb-8">
           <h2 className="text-xl font-semibold mb-4">Conversation</h2>
-          <div className="border border-border rounded-lg bg-card overflow-hidden">
+          <div className="border border-border rounded-lg bg-background overflow-hidden">
             <ChatBotDemo
               messages={requestMessages}
               containerClassName="h-auto"
               hideDivider={true}
+              profileId={agent?.id}
             />
           </div>
         </div>
@@ -251,7 +266,11 @@ function LogDetail({
                 </span>
               </AccordionTrigger>
               <AccordionContent className="px-6 pb-4">
-                <div className="bg-muted rounded-lg p-4 overflow-auto max-h-[600px]">
+                <div className="bg-muted rounded-lg p-4 overflow-auto max-h-[600px] relative">
+                  <CopyButton
+                    text={JSON.stringify(dynamicInteraction.request, null, 2)}
+                    className="absolute top-2 right-2"
+                  />
                   <pre className="text-xs whitespace-pre-wrap break-words">
                     {JSON.stringify(dynamicInteraction.request, null, 2)}
                   </pre>
@@ -270,7 +289,15 @@ function LogDetail({
                   </span>
                 </AccordionTrigger>
                 <AccordionContent className="px-6 pb-4">
-                  <div className="bg-muted rounded-lg p-4 overflow-auto max-h-[600px]">
+                  <div className="bg-muted rounded-lg p-4 overflow-auto max-h-[600px] relative">
+                    <CopyButton
+                      text={JSON.stringify(
+                        dynamicInteraction.processedRequest,
+                        null,
+                        2,
+                      )}
+                      className="absolute top-2 right-2"
+                    />
                     <pre className="text-xs whitespace-pre-wrap break-words">
                       {JSON.stringify(
                         dynamicInteraction.processedRequest,
@@ -295,7 +322,11 @@ function LogDetail({
                 <span className="text-base font-semibold">Raw Response</span>
               </AccordionTrigger>
               <AccordionContent className="px-6 pb-4">
-                <div className="bg-muted rounded-lg p-4 overflow-auto max-h-[600px]">
+                <div className="bg-muted rounded-lg p-4 overflow-auto max-h-[600px] relative">
+                  <CopyButton
+                    text={JSON.stringify(dynamicInteraction.response, null, 2)}
+                    className="absolute top-2 right-2"
+                  />
                   <pre className="text-xs whitespace-pre-wrap break-words">
                     {JSON.stringify(dynamicInteraction.response, null, 2)}
                   </pre>

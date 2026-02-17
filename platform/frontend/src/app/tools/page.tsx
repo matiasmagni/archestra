@@ -14,15 +14,14 @@ import {
   DEFAULT_SORT_BY,
   DEFAULT_SORT_DIRECTION,
   DEFAULT_TOOLS_PAGE_SIZE,
+  handleApiError,
 } from "@/lib/utils";
 import { ToolsClient } from "./page.client";
 
 export const dynamic = "force-dynamic";
 
 export type ToolsInitialData = {
-  agentTools: archestraApiTypes.GetAllAgentToolsResponses["200"];
-  agents: archestraApiTypes.GetAllAgentsResponses["200"];
-  mcpServers: archestraApiTypes.GetMcpServersResponses["200"];
+  toolsWithAssignments: archestraApiTypes.GetToolsWithAssignmentsResponses["200"];
   internalMcpCatalog: archestraApiTypes.GetInternalMcpCatalogResponses["200"];
   toolInvocationPolicies: ReturnType<typeof transformToolInvocationPolicies>;
   toolResultPolicies: ReturnType<typeof transformToolResultPolicies>;
@@ -30,7 +29,7 @@ export type ToolsInitialData = {
 
 export default async function ToolsPage() {
   let initialData: ToolsInitialData = {
-    agentTools: {
+    toolsWithAssignments: {
       data: [],
       pagination: {
         currentPage: 1,
@@ -41,42 +40,55 @@ export default async function ToolsPage() {
         hasPrev: false,
       },
     },
-    agents: [],
-    mcpServers: [],
     internalMcpCatalog: [],
     toolInvocationPolicies: { all: [], byProfileToolId: {} },
     toolResultPolicies: { all: [], byProfileToolId: {} },
   };
   try {
     const headers = await getServerApiHeaders();
+    const [
+      toolsResponse,
+      catalogResponse,
+      invocationPoliciesResponse,
+      trustedDataPoliciesResponse,
+    ] = await Promise.all([
+      archestraApiSdk.getToolsWithAssignments({
+        headers,
+        query: {
+          limit: DEFAULT_TOOLS_PAGE_SIZE,
+          offset: 0,
+          sortBy: DEFAULT_SORT_BY,
+          sortDirection: DEFAULT_SORT_DIRECTION,
+        },
+      }),
+      archestraApiSdk.getInternalMcpCatalog({ headers }),
+      archestraApiSdk.getToolInvocationPolicies({ headers }),
+      archestraApiSdk.getTrustedDataPolicies({ headers }),
+    ]);
+    if (toolsResponse.error) {
+      handleApiError(toolsResponse.error);
+    }
+    if (catalogResponse.error) {
+      handleApiError(catalogResponse.error);
+    }
+    if (invocationPoliciesResponse.error) {
+      handleApiError(invocationPoliciesResponse.error);
+    }
+    if (trustedDataPoliciesResponse.error) {
+      handleApiError(trustedDataPoliciesResponse.error);
+    }
     initialData = {
-      agentTools:
-        (
-          await archestraApiSdk.getAllAgentTools({
-            headers,
-            query: {
-              limit: DEFAULT_TOOLS_PAGE_SIZE,
-              offset: 0,
-              sortBy: DEFAULT_SORT_BY,
-              sortDirection: DEFAULT_SORT_DIRECTION,
-              excludeArchestraTools: true,
-            },
-          })
-        ).data || initialData.agentTools,
-      agents: (await archestraApiSdk.getAllAgents({ headers })).data || [],
-      mcpServers: (await archestraApiSdk.getMcpServers({ headers })).data || [],
-      internalMcpCatalog:
-        (await archestraApiSdk.getInternalMcpCatalog({ headers })).data || [],
+      toolsWithAssignments:
+        toolsResponse.data || initialData.toolsWithAssignments,
+      internalMcpCatalog: catalogResponse.data || [],
       toolInvocationPolicies: transformToolInvocationPolicies(
-        (await archestraApiSdk.getToolInvocationPolicies({ headers })).data ||
-          [],
+        invocationPoliciesResponse.data || [],
       ),
       toolResultPolicies: transformToolResultPolicies(
-        (await archestraApiSdk.getTrustedDataPolicies({ headers })).data || [],
+        trustedDataPoliciesResponse.data || [],
       ),
     };
   } catch (error) {
-    console.error(error);
     return <ServerErrorFallback error={error as ErrorExtended} />;
   }
   return <ToolsClient initialData={initialData} />;

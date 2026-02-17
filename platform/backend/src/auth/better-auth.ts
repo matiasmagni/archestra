@@ -1,11 +1,24 @@
 import type { HookEndpointContext } from "@better-auth/core";
+import { oauthProvider } from "@better-auth/oauth-provider";
 import { sso } from "@better-auth/sso";
-import { SSO_TRUSTED_PROVIDER_IDS } from "@shared";
+import { OAUTH_PAGES, OAUTH_SCOPES, SSO_TRUSTED_PROVIDER_IDS } from "@shared";
+import {
+  allAvailableActions,
+  editorPermissions,
+  memberPermissions,
+} from "@shared/access-control";
 import { APIError, betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { createAuthMiddleware } from "better-auth/api";
-import { admin, apiKey, organization, twoFactor } from "better-auth/plugins";
+import {
+  admin,
+  apiKey,
+  jwt,
+  organization,
+  twoFactor,
+} from "better-auth/plugins";
 import { createAccessControl } from "better-auth/plugins/access";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import config from "@/config";
 import db, { schema } from "@/database";
@@ -18,7 +31,7 @@ import SessionModel from "@/models/session";
 const { ssoConfig, syncSsoRole, syncSsoTeams } =
   config.enterpriseLicenseActivated
     ? // biome-ignore lint/style/noRestrictedImports: EE-only SSO config
-      await import("./sso.ee")
+      await import("./idp.ee")
     : {
         ssoConfig: undefined,
         syncSsoRole: () => {},
@@ -29,7 +42,6 @@ const APP_NAME = "Archestra";
 const {
   api: { apiKeyAuthorizationHeaderName },
   frontendBaseUrl,
-  production,
   auth: {
     secret,
     cookieDomain,
@@ -38,22 +50,6 @@ const {
   },
 } = config;
 
-const isHttps = () => {
-  // if baseURL (coming from process.env.ARCHESTRA_FRONTEND_URL) is not set, use production (process.env.NODE_ENV=production)
-  // to determine if we're using HTTPS
-  if (!frontendBaseUrl) {
-    return production;
-  }
-  // otherwise, use frontendBaseUrl to determine if we're using HTTPS
-  // this is useful for envs where NODE_ENV=production but using HTTP localhost like docker run
-  return frontendBaseUrl.startsWith("https://");
-};
-
-const { allAvailableActions, editorPermissions, memberPermissions } =
-  config.enterpriseLicenseActivated
-    ? // biome-ignore lint/style/noRestrictedImports: EE-only permissions
-      await import("@shared/access-control.ee")
-    : await import("@shared/access-control");
 const ac = createAccessControl(allAvailableActions);
 
 const adminRole = ac.newRole(allAvailableActions);
@@ -65,6 +61,8 @@ export const auth: any = betterAuth({
   appName: APP_NAME,
   baseURL: frontendBaseUrl,
   secret,
+  // Prevent JWT plugin's /token endpoint from conflicting with OAuth provider's /oauth2/token
+  disabledPaths: ["/token"],
   ...(config.authRateLimitDisabled ? { rateLimit: { enabled: false } } : {}),
   plugins: [
     organization({
@@ -138,6 +136,25 @@ export const auth: any = betterAuth({
       issuer: APP_NAME,
     }),
     ...(ssoConfig ? [sso(ssoConfig)] : []),
+    jwt({
+      jwt: {
+        // Pydantic's AnyHttpUrl (used by MCP/Open WebUI OAuthMetadata model)
+        // normalizes URLs by appending a trailing slash when the path is empty.
+        // The JWT iss claim must match the normalized issuer from the well-known
+        // metadata to pass authlib's claim validation.
+        issuer: `${frontendBaseUrl}/`,
+      },
+      jwks: {
+        keyPairConfig: { alg: "RS256", modulusLength: 2048 },
+      },
+    }),
+    oauthProvider({
+      loginPage: OAUTH_PAGES.login,
+      consentPage: OAUTH_PAGES.consent,
+      allowDynamicClientRegistration: true,
+      allowUnauthenticatedClientRegistration: true,
+      scopes: [...OAUTH_SCOPES],
+    }),
   ],
 
   user: {
@@ -163,7 +180,12 @@ export const auth: any = betterAuth({
       teamMember: schema.teamMembersTable,
       twoFactor: schema.twoFactorsTable,
       verification: schema.verificationsTable,
-      ssoProvider: schema.ssoProvidersTable,
+      ssoProvider: schema.identityProvidersTable,
+      jwks: schema.jwksTable,
+      oauthClient: schema.oauthClientsTable,
+      oauthAccessToken: schema.oauthAccessTokensTable,
+      oauthRefreshToken: schema.oauthRefreshTokensTable,
+      oauthConsent: schema.oauthConsentsTable,
     },
   }),
 
@@ -204,10 +226,9 @@ export const auth: any = betterAuth({
     cookiePrefix: "archestra",
     defaultCookieAttributes: {
       ...(cookieDomain ? { domain: cookieDomain } : {}),
-      secure: isHttps(), // Use secure cookies when we're using HTTPS
       // "lax" is required for OAuth/SSO flows because the callback is a cross-site top-level navigation
       // "strict" would prevent the state cookie from being sent with the callback request
-      sameSite: isHttps() ? "none" : "lax",
+      sameSite: "lax",
     },
   },
 
@@ -241,6 +262,76 @@ export const auth: any = betterAuth({
         },
       },
     },
+    member: {
+      create: {
+        before: async (member: {
+          id: string;
+          userId: string;
+          organizationId: string;
+          role: string;
+          createdAt: Date;
+        }) => {
+          // When a member is created via invitation acceptance, ensure the role
+          // matches the invitation's custom role (not better-auth's default)
+          try {
+            // Use a single JOIN query to find pending invitation for this user
+            // This combines user email lookup and invitation lookup into one query
+            const [result] = await db
+              .select({ invitationRole: schema.invitationsTable.role })
+              .from(schema.usersTable)
+              .innerJoin(
+                schema.invitationsTable,
+                and(
+                  eq(
+                    schema.invitationsTable.email,
+                    schema.usersTable.email, // Emails are stored lowercase in both tables
+                  ),
+                  eq(
+                    schema.invitationsTable.organizationId,
+                    member.organizationId,
+                  ),
+                  eq(schema.invitationsTable.status, "pending"),
+                ),
+              )
+              .where(eq(schema.usersTable.id, member.userId))
+              .limit(1);
+
+            // No pending invitation found - skip role override
+            if (!result) {
+              return { data: member };
+            }
+
+            if (
+              result.invitationRole &&
+              result.invitationRole !== member.role
+            ) {
+              logger.info(
+                {
+                  userId: member.userId,
+                  organizationId: member.organizationId,
+                  originalRole: member.role,
+                  invitationRole: result.invitationRole,
+                },
+                "[databaseHooks:member] Overriding role with invitation's custom role",
+              );
+              return {
+                data: {
+                  ...member,
+                  role: result.invitationRole,
+                },
+              };
+            }
+          } catch (error) {
+            logger.error(
+              { err: error, userId: member.userId },
+              "[databaseHooks:member] Error checking invitation role",
+            );
+          }
+
+          return { data: member };
+        },
+      },
+    },
   },
 
   hooks: {
@@ -261,6 +352,10 @@ export type BetterAuth = typeof auth;
  */
 export async function handleBeforeHook(ctx: HookEndpointContext) {
   const { path, method, body } = ctx;
+
+  if (!path) {
+    return ctx;
+  }
 
   logger.debug({ path, method }, "[auth:beforeHook] Processing auth request");
 
@@ -401,6 +496,10 @@ export async function handleBeforeHook(ctx: HookEndpointContext) {
  */
 export async function handleAfterHook(ctx: HookEndpointContext) {
   const { path, method, body, context } = ctx;
+
+  if (!path) {
+    return ctx;
+  }
 
   logger.debug({ path, method }, "[auth:afterHook] Processing post-auth hook");
 

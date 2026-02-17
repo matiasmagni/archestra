@@ -12,16 +12,20 @@ export const oauthConfigSchema = z.object({
 
 export const formSchema = z
   .object({
-    name: z.string().min(1, "Name is required"),
+    name: z.string().trim().min(1, "Name is required"),
     serverType: z.enum(["remote", "local"]),
     serverUrl: z
       .string()
       .url({ error: "Must be a valid URL" })
       .optional()
       .or(z.literal("")),
-    authMethod: z.enum(["none", "pat", "oauth"]),
+    authMethod: z.enum(["none", "bearer", "raw_token", "oauth"]),
     oauthConfig: oauthConfigSchema.optional(),
     localConfig: LocalConfigFormSchema.optional(),
+    // Kubernetes Deployment spec YAML (for local servers)
+    deploymentSpecYaml: z.string().optional(),
+    // Original YAML from API (used to detect if user modified the YAML)
+    originalDeploymentSpecYaml: z.string().optional(),
     // BYOS: External Vault path for OAuth client secret
     oauthClientSecretVaultPath: z.string().optional(),
     // BYOS: External Vault key for OAuth client secret

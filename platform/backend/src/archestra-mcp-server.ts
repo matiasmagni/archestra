@@ -1,12 +1,22 @@
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import {
+  AGENT_TOOL_PREFIX,
   ARCHESTRA_MCP_SERVER_NAME,
   MCP_SERVER_TOOL_NAME_SEPARATOR,
+  TOOL_ARTIFACT_WRITE_FULL_NAME,
   TOOL_CREATE_MCP_SERVER_INSTALLATION_REQUEST_FULL_NAME,
+  TOOL_QUERY_KNOWLEDGE_GRAPH_FULL_NAME,
+  TOOL_TODO_WRITE_FULL_NAME,
 } from "@shared";
+import { executeA2AMessage } from "@/agents/a2a-executor";
+import { userHasPermission } from "@/auth/utils";
+import type { TokenAuthContext } from "@/clients/mcp-client";
+import { getKnowledgeGraphProvider } from "@/knowledge-graph";
 import logger from "@/logging";
 import {
   AgentModel,
+  AgentTeamModel,
+  ConversationModel,
   InternalMcpCatalogModel,
   LimitModel,
   McpServerModel,
@@ -15,6 +25,7 @@ import {
   TrustedDataPolicyModel,
 } from "@/models";
 import { assignToolToAgent } from "@/routes/agent-tool";
+import { ProviderError } from "@/routes/chat/errors";
 import type { InternalMcpCatalog } from "@/types";
 import {
   AutonomyPolicyOperator,
@@ -24,6 +35,7 @@ import {
   type ToolInvocation,
   type TrustedData,
 } from "@/types";
+import { type QueryMode, QueryModeSchema } from "@/types/knowledge-graph";
 
 /**
  * Constants for Archestra MCP server
@@ -34,8 +46,11 @@ const TOOL_CREATE_LIMIT_NAME = "create_limit";
 const TOOL_GET_LIMITS_NAME = "get_limits";
 const TOOL_UPDATE_LIMIT_NAME = "update_limit";
 const TOOL_DELETE_LIMIT_NAME = "delete_limit";
-const TOOL_GET_PROFILE_TOKEN_USAGE_NAME = "get_profile_token_usage";
-const TOOL_CREATE_PROFILE_NAME = "create_profile";
+const TOOL_GET_AGENT_TOKEN_USAGE_NAME = "get_agent_token_usage";
+const TOOL_GET_LLM_PROXY_TOKEN_USAGE_NAME = "get_llm_proxy_token_usage";
+const TOOL_CREATE_AGENT_NAME = "create_agent";
+const TOOL_CREATE_LLM_PROXY_NAME = "create_llm_proxy";
+const TOOL_CREATE_MCP_GATEWAY_NAME = "create_mcp_gateway";
 const TOOL_GET_AUTONOMY_POLICY_OPERATORS_NAME = "get_autonomy_policy_operators";
 const TOOL_GET_TOOL_INVOCATION_POLICIES_NAME = "get_tool_invocation_policies";
 const TOOL_CREATE_TOOL_INVOCATION_POLICY_NAME = "create_tool_invocation_policy";
@@ -47,10 +62,24 @@ const TOOL_CREATE_TRUSTED_DATA_POLICY_NAME = "create_trusted_data_policy";
 const TOOL_GET_TRUSTED_DATA_POLICY_NAME = "get_trusted_data_policy";
 const TOOL_UPDATE_TRUSTED_DATA_POLICY_NAME = "update_trusted_data_policy";
 const TOOL_DELETE_TRUSTED_DATA_POLICY_NAME = "delete_trusted_data_policy";
-const TOOL_BULK_ASSIGN_TOOLS_TO_PROFILES_NAME = "bulk_assign_tools_to_profiles";
+const TOOL_BULK_ASSIGN_TOOLS_TO_AGENTS_NAME = "bulk_assign_tools_to_agents";
+const TOOL_BULK_ASSIGN_TOOLS_TO_MCP_GATEWAYS_NAME =
+  "bulk_assign_tools_to_mcp_gateways";
 const TOOL_GET_MCP_SERVERS_NAME = "get_mcp_servers";
 const TOOL_GET_MCP_SERVER_TOOLS_NAME = "get_mcp_server_tools";
-const TOOL_GET_PROFILE_NAME = "get_profile";
+const TOOL_GET_AGENT_NAME = "get_agent";
+const TOOL_GET_LLM_PROXY_NAME = "get_llm_proxy";
+const TOOL_GET_MCP_GATEWAY_NAME = "get_mcp_gateway";
+
+/**
+ * Convert a name to a URL-safe slug for tool naming
+ */
+function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
 
 // Construct fully-qualified tool names
 const TOOL_WHOAMI_FULL_NAME = `${ARCHESTRA_MCP_SERVER_NAME}${MCP_SERVER_TOOL_NAME_SEPARATOR}${TOOL_WHOAMI_NAME}`;
@@ -59,8 +88,11 @@ const TOOL_CREATE_LIMIT_FULL_NAME = `${ARCHESTRA_MCP_SERVER_NAME}${MCP_SERVER_TO
 const TOOL_GET_LIMITS_FULL_NAME = `${ARCHESTRA_MCP_SERVER_NAME}${MCP_SERVER_TOOL_NAME_SEPARATOR}${TOOL_GET_LIMITS_NAME}`;
 const TOOL_UPDATE_LIMIT_FULL_NAME = `${ARCHESTRA_MCP_SERVER_NAME}${MCP_SERVER_TOOL_NAME_SEPARATOR}${TOOL_UPDATE_LIMIT_NAME}`;
 const TOOL_DELETE_LIMIT_FULL_NAME = `${ARCHESTRA_MCP_SERVER_NAME}${MCP_SERVER_TOOL_NAME_SEPARATOR}${TOOL_DELETE_LIMIT_NAME}`;
-const TOOL_GET_PROFILE_TOKEN_USAGE_FULL_NAME = `${ARCHESTRA_MCP_SERVER_NAME}${MCP_SERVER_TOOL_NAME_SEPARATOR}${TOOL_GET_PROFILE_TOKEN_USAGE_NAME}`;
-const TOOL_CREATE_PROFILE_FULL_NAME = `${ARCHESTRA_MCP_SERVER_NAME}${MCP_SERVER_TOOL_NAME_SEPARATOR}${TOOL_CREATE_PROFILE_NAME}`;
+const TOOL_GET_AGENT_TOKEN_USAGE_FULL_NAME = `${ARCHESTRA_MCP_SERVER_NAME}${MCP_SERVER_TOOL_NAME_SEPARATOR}${TOOL_GET_AGENT_TOKEN_USAGE_NAME}`;
+const TOOL_GET_LLM_PROXY_TOKEN_USAGE_FULL_NAME = `${ARCHESTRA_MCP_SERVER_NAME}${MCP_SERVER_TOOL_NAME_SEPARATOR}${TOOL_GET_LLM_PROXY_TOKEN_USAGE_NAME}`;
+const TOOL_CREATE_AGENT_FULL_NAME = `${ARCHESTRA_MCP_SERVER_NAME}${MCP_SERVER_TOOL_NAME_SEPARATOR}${TOOL_CREATE_AGENT_NAME}`;
+const TOOL_CREATE_LLM_PROXY_FULL_NAME = `${ARCHESTRA_MCP_SERVER_NAME}${MCP_SERVER_TOOL_NAME_SEPARATOR}${TOOL_CREATE_LLM_PROXY_NAME}`;
+const TOOL_CREATE_MCP_GATEWAY_FULL_NAME = `${ARCHESTRA_MCP_SERVER_NAME}${MCP_SERVER_TOOL_NAME_SEPARATOR}${TOOL_CREATE_MCP_GATEWAY_NAME}`;
 const TOOL_GET_AUTONOMY_POLICY_OPERATORS_FULL_NAME = `${ARCHESTRA_MCP_SERVER_NAME}${MCP_SERVER_TOOL_NAME_SEPARATOR}${TOOL_GET_AUTONOMY_POLICY_OPERATORS_NAME}`;
 const TOOL_GET_TOOL_INVOCATION_POLICIES_FULL_NAME = `${ARCHESTRA_MCP_SERVER_NAME}${MCP_SERVER_TOOL_NAME_SEPARATOR}${TOOL_GET_TOOL_INVOCATION_POLICIES_NAME}`;
 const TOOL_CREATE_TOOL_INVOCATION_POLICY_FULL_NAME = `${ARCHESTRA_MCP_SERVER_NAME}${MCP_SERVER_TOOL_NAME_SEPARATOR}${TOOL_CREATE_TOOL_INVOCATION_POLICY_NAME}`;
@@ -72,19 +104,40 @@ const TOOL_CREATE_TRUSTED_DATA_POLICY_FULL_NAME = `${ARCHESTRA_MCP_SERVER_NAME}$
 const TOOL_GET_TRUSTED_DATA_POLICY_FULL_NAME = `${ARCHESTRA_MCP_SERVER_NAME}${MCP_SERVER_TOOL_NAME_SEPARATOR}${TOOL_GET_TRUSTED_DATA_POLICY_NAME}`;
 const TOOL_UPDATE_TRUSTED_DATA_POLICY_FULL_NAME = `${ARCHESTRA_MCP_SERVER_NAME}${MCP_SERVER_TOOL_NAME_SEPARATOR}${TOOL_UPDATE_TRUSTED_DATA_POLICY_NAME}`;
 const TOOL_DELETE_TRUSTED_DATA_POLICY_FULL_NAME = `${ARCHESTRA_MCP_SERVER_NAME}${MCP_SERVER_TOOL_NAME_SEPARATOR}${TOOL_DELETE_TRUSTED_DATA_POLICY_NAME}`;
-const TOOL_BULK_ASSIGN_TOOLS_TO_PROFILES_FULL_NAME = `${ARCHESTRA_MCP_SERVER_NAME}${MCP_SERVER_TOOL_NAME_SEPARATOR}${TOOL_BULK_ASSIGN_TOOLS_TO_PROFILES_NAME}`;
+const TOOL_BULK_ASSIGN_TOOLS_TO_AGENTS_FULL_NAME = `${ARCHESTRA_MCP_SERVER_NAME}${MCP_SERVER_TOOL_NAME_SEPARATOR}${TOOL_BULK_ASSIGN_TOOLS_TO_AGENTS_NAME}`;
+const TOOL_BULK_ASSIGN_TOOLS_TO_MCP_GATEWAYS_FULL_NAME = `${ARCHESTRA_MCP_SERVER_NAME}${MCP_SERVER_TOOL_NAME_SEPARATOR}${TOOL_BULK_ASSIGN_TOOLS_TO_MCP_GATEWAYS_NAME}`;
 const TOOL_GET_MCP_SERVERS_FULL_NAME = `${ARCHESTRA_MCP_SERVER_NAME}${MCP_SERVER_TOOL_NAME_SEPARATOR}${TOOL_GET_MCP_SERVERS_NAME}`;
 const TOOL_GET_MCP_SERVER_TOOLS_FULL_NAME = `${ARCHESTRA_MCP_SERVER_NAME}${MCP_SERVER_TOOL_NAME_SEPARATOR}${TOOL_GET_MCP_SERVER_TOOLS_NAME}`;
-const TOOL_GET_PROFILE_FULL_NAME = `${ARCHESTRA_MCP_SERVER_NAME}${MCP_SERVER_TOOL_NAME_SEPARATOR}${TOOL_GET_PROFILE_NAME}`;
+const TOOL_GET_AGENT_FULL_NAME = `${ARCHESTRA_MCP_SERVER_NAME}${MCP_SERVER_TOOL_NAME_SEPARATOR}${TOOL_GET_AGENT_NAME}`;
+const TOOL_GET_LLM_PROXY_FULL_NAME = `${ARCHESTRA_MCP_SERVER_NAME}${MCP_SERVER_TOOL_NAME_SEPARATOR}${TOOL_GET_LLM_PROXY_NAME}`;
+const TOOL_GET_MCP_GATEWAY_FULL_NAME = `${ARCHESTRA_MCP_SERVER_NAME}${MCP_SERVER_TOOL_NAME_SEPARATOR}${TOOL_GET_MCP_GATEWAY_NAME}`;
 
 /**
  * Context for the Archestra MCP server
  */
 export interface ArchestraContext {
-  profile: {
+  agent: {
     id: string;
     name: string;
   };
+  conversationId?: string;
+  userId?: string;
+  /** The ID of the current internal agent (for agent delegation tool lookup) */
+  agentId?: string;
+  /** The organization ID */
+  organizationId?: string;
+  /** Token authentication context */
+  tokenAuth?: TokenAuthContext;
+  /** Session ID for grouping related LLM requests in logs */
+  sessionId?: string;
+  /**
+   * Delegation chain of agent IDs (colon-separated).
+   * Used to track the path of delegated agent calls.
+   * E.g., "agentA:agentB" means agentA delegated to agentB.
+   */
+  delegationChain?: string;
+  /** Optional cancellation signal from parent chat/tool execution */
+  abortSignal?: AbortSignal;
 }
 
 /**
@@ -95,11 +148,148 @@ export async function executeArchestraTool(
   args: Record<string, unknown> | undefined,
   context: ArchestraContext,
 ): Promise<CallToolResult> {
-  const { profile } = context;
+  const { agent: contextAgent, agentId, organizationId, tokenAuth } = context;
+
+  // Handle dynamic agent tools (e.g., agent__research_bot)
+  if (toolName.startsWith(AGENT_TOOL_PREFIX)) {
+    const message = args?.message as string;
+
+    if (!message) {
+      return {
+        content: [{ type: "text", text: "Error: message is required." }],
+        isError: true,
+      };
+    }
+
+    if (!agentId) {
+      return {
+        content: [{ type: "text", text: "Error: No agent context available." }],
+        isError: true,
+      };
+    }
+
+    if (!organizationId) {
+      return {
+        content: [
+          { type: "text", text: "Error: Organization context not available." },
+        ],
+        isError: true,
+      };
+    }
+
+    // Extract target agent slug from tool name
+    const targetAgentSlug = toolName.replace(AGENT_TOOL_PREFIX, "");
+
+    // Get all delegation targets configured for this agent
+    const delegations = await ToolModel.getDelegationToolsByAgent(agentId);
+
+    // Find matching delegation by slug
+    const delegation = delegations.find(
+      (d) => slugify(d.targetAgent.name) === targetAgentSlug,
+    );
+
+    if (!delegation) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error: Agent not found or not configured for delegation.`,
+          },
+        ],
+        isError: true,
+      };
+    }
+
+    // Check user has access if user token is being used
+    const userId = tokenAuth?.userId;
+    if (userId && organizationId) {
+      const isProfileAdmin = await userHasPermission(
+        userId,
+        organizationId,
+        "profile",
+        "admin",
+      );
+
+      const userAccessibleAgentIds =
+        await AgentTeamModel.getUserAccessibleAgentIds(userId, isProfileAdmin);
+      if (!userAccessibleAgentIds.includes(delegation.targetAgent.id)) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error: You don't have access to this agent.`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+
+    try {
+      // Use sessionId from context, or fall back to conversationId for chat context
+      const sessionId = context.sessionId || context.conversationId;
+
+      logger.info(
+        {
+          agentId,
+          targetAgentId: delegation.targetAgent.id,
+          targetAgentName: delegation.targetAgent.name,
+          organizationId,
+          userId: userId || "system",
+          sessionId,
+        },
+        "Executing agent delegation tool",
+      );
+
+      const result = await executeA2AMessage({
+        agentId: delegation.targetAgent.id,
+        message,
+        organizationId,
+        userId: userId || "system",
+        sessionId,
+        // Pass the current delegation chain so the child can extend it
+        parentDelegationChain: context.delegationChain || context.agentId,
+        // Propagate conversationId for browser tab isolation
+        conversationId: context.conversationId,
+        abortSignal: context.abortSignal,
+      });
+
+      return {
+        content: [{ type: "text", text: result.text }],
+        isError: false,
+      };
+    } catch (error) {
+      if (isAbortLikeError(error)) {
+        logger.info(
+          { agentId, targetAgentId: delegation.targetAgent.id },
+          "Agent delegation was aborted",
+        );
+        throw error;
+      }
+      logger.error(
+        { error, agentId, targetAgentId: delegation.targetAgent.id },
+        "Agent delegation tool execution failed",
+      );
+      // Re-throw ProviderError so it propagates to the parent stream's onError
+      // with the correct provider info (the subagent can't produce output)
+      if (error instanceof ProviderError) {
+        throw error;
+      }
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error: ${error instanceof Error ? error.message : "Unknown error"}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
 
   if (toolName === TOOL_WHOAMI_FULL_NAME) {
     logger.info(
-      { profileId: profile.id, profileName: profile.name },
+      { agentId: contextAgent.id, agentName: contextAgent.name },
       "whoami tool called",
     );
 
@@ -107,7 +297,7 @@ export async function executeArchestraTool(
       content: [
         {
           type: "text",
-          text: `Profile Name: ${profile.name}\nProfile ID: ${profile.id}`,
+          text: `Agent Name: ${contextAgent.name}\nAgent ID: ${contextAgent.id}`,
         },
       ],
       isError: false,
@@ -116,7 +306,7 @@ export async function executeArchestraTool(
 
   if (toolName === TOOL_SEARCH_PRIVATE_MCP_REGISTRY_FULL_NAME) {
     logger.info(
-      { profileId: profile.id, searchArgs: args },
+      { agentId: contextAgent.id, searchArgs: args },
       "search_private_mcp_registry tool called",
     );
 
@@ -190,10 +380,26 @@ export async function executeArchestraTool(
     }
   }
 
-  if (toolName === TOOL_CREATE_PROFILE_FULL_NAME) {
+  if (
+    toolName === TOOL_CREATE_AGENT_FULL_NAME ||
+    toolName === TOOL_CREATE_LLM_PROXY_FULL_NAME ||
+    toolName === TOOL_CREATE_MCP_GATEWAY_FULL_NAME
+  ) {
+    const agentTypeMap: Record<string, string> = {
+      [TOOL_CREATE_AGENT_FULL_NAME]: "agent",
+      [TOOL_CREATE_LLM_PROXY_FULL_NAME]: "llm_proxy",
+      [TOOL_CREATE_MCP_GATEWAY_FULL_NAME]: "mcp_gateway",
+    };
+    const targetAgentType = agentTypeMap[toolName];
+    const toolLabel = targetAgentType.replace("_", " ");
+
     logger.info(
-      { profileId: profile.id, createArgs: args },
-      "create_profile tool called",
+      {
+        agentId: contextAgent.id,
+        createArgs: args,
+        agentType: targetAgentType,
+      },
+      `create_${targetAgentType} tool called`,
     );
 
     try {
@@ -212,35 +418,43 @@ export async function executeArchestraTool(
           content: [
             {
               type: "text",
-              text: "Error: Profile name is required and cannot be empty.",
+              text: `Error: ${toolLabel} name is required and cannot be empty.`,
             },
           ],
           isError: true,
         };
       }
 
-      // Create the profile
-      const newProfile = await AgentModel.create({
+      // Build create params - only agents get prompt fields
+      const createParams: Parameters<typeof AgentModel.create>[0] = {
         name,
         teams,
         labels,
-      });
+        agentType: targetAgentType as "agent" | "llm_proxy" | "mcp_gateway",
+      };
+
+      if (targetAgentType === "agent") {
+        const systemPrompt = args?.systemPrompt as string | undefined;
+        const userPrompt = args?.userPrompt as string | undefined;
+        if (systemPrompt) createParams.systemPrompt = systemPrompt;
+        if (userPrompt) createParams.userPrompt = userPrompt;
+      }
+
+      const created = await AgentModel.create(createParams);
 
       return {
         content: [
           {
             type: "text",
-            text: `Successfully created profile.\n\nProfile Name: ${
-              newProfile.name
-            }\nProfile ID: ${newProfile.id}\nTeams: ${
-              newProfile.teams.length > 0
-                ? newProfile.teams.map((t) => t.name).join(", ")
+            text: `Successfully created ${toolLabel}.\n\nName: ${
+              created.name
+            }\nID: ${created.id}\nType: ${targetAgentType}\nTeams: ${
+              created.teams.length > 0
+                ? created.teams.map((t) => t.name).join(", ")
                 : "None"
             }\nLabels: ${
-              newProfile.labels.length > 0
-                ? newProfile.labels
-                    .map((l) => `${l.key}: ${l.value}`)
-                    .join(", ")
+              created.labels.length > 0
+                ? created.labels.map((l) => `${l.key}: ${l.value}`).join(", ")
                 : "None"
             }`,
           },
@@ -248,12 +462,12 @@ export async function executeArchestraTool(
         isError: false,
       };
     } catch (error) {
-      logger.error({ err: error }, "Error creating profile");
+      logger.error({ err: error }, `Error creating ${toolLabel}`);
       return {
         content: [
           {
             type: "text",
-            text: `Error creating profile: ${
+            text: `Error creating ${toolLabel}: ${
               error instanceof Error ? error.message : "Unknown error"
             }`,
           },
@@ -269,7 +483,7 @@ export async function executeArchestraTool(
    */
   if (toolName === TOOL_CREATE_MCP_SERVER_INSTALLATION_REQUEST_FULL_NAME) {
     logger.info(
-      { profileId: profile.id, requestArgs: args },
+      { agentId: contextAgent.id, requestArgs: args },
       "create_mcp_server_installation_request tool called",
     );
 
@@ -307,19 +521,12 @@ export async function executeArchestraTool(
 
   if (toolName === TOOL_CREATE_LIMIT_FULL_NAME) {
     logger.info(
-      { profileId: profile.id, createLimitArgs: args },
+      { agentId: contextAgent.id, createLimitArgs: args },
       "create_limit tool called",
     );
 
     try {
-      let entityType: LimitEntityType;
-
-      // Mapping until we migrate agent -> profile in LimitEntityType database column
-      if (args?.entity_type === "profile") {
-        entityType = "agent";
-      } else {
-        entityType = args?.entity_type as LimitEntityType;
-      }
+      const entityType = args?.entity_type as LimitEntityType;
 
       const entityId = args?.entity_id as string;
       const limitType = args?.limit_type as LimitType;
@@ -427,18 +634,12 @@ export async function executeArchestraTool(
 
   if (toolName === TOOL_GET_LIMITS_FULL_NAME) {
     logger.info(
-      { profileId: profile.id, getLimitsArgs: args },
+      { agentId: contextAgent.id, getLimitsArgs: args },
       "get_limits tool called",
     );
 
     try {
-      let entityType: LimitEntityType;
-      // Mapping until we migrate agent -> profile in LimitEntityType database column
-      if (args?.entity_type === "profile") {
-        entityType = "agent";
-      } else {
-        entityType = args?.entity_type as LimitEntityType;
-      }
+      const entityType = args?.entity_type as LimitEntityType;
 
       const entityId = args?.entity_id as string | undefined;
 
@@ -505,7 +706,7 @@ export async function executeArchestraTool(
 
   if (toolName === TOOL_UPDATE_LIMIT_FULL_NAME) {
     logger.info(
-      { profileId: profile.id, updateLimitArgs: args },
+      { agentId: contextAgent.id, updateLimitArgs: args },
       "update_limit tool called",
     );
 
@@ -583,7 +784,7 @@ export async function executeArchestraTool(
 
   if (toolName === TOOL_DELETE_LIMIT_FULL_NAME) {
     logger.info(
-      { profileId: profile.id, deleteLimitArgs: args },
+      { agentId: contextAgent.id, deleteLimitArgs: args },
       "delete_limit tool called",
     );
 
@@ -641,32 +842,49 @@ export async function executeArchestraTool(
     }
   }
 
-  if (toolName === TOOL_GET_PROFILE_TOKEN_USAGE_FULL_NAME) {
+  if (
+    toolName === TOOL_GET_AGENT_TOKEN_USAGE_FULL_NAME ||
+    toolName === TOOL_GET_LLM_PROXY_TOKEN_USAGE_FULL_NAME
+  ) {
+    const tokenUsageTypeMap: Record<string, string> = {
+      [TOOL_GET_AGENT_TOKEN_USAGE_FULL_NAME]: "agent",
+      [TOOL_GET_LLM_PROXY_TOKEN_USAGE_FULL_NAME]: "llm_proxy",
+    };
+    const tokenUsageType = tokenUsageTypeMap[toolName];
+    const tokenUsageLabel = tokenUsageType.replace("_", " ");
+
     logger.info(
-      { profileId: profile.id, getTokenUsageArgs: args },
-      "get_profile_token_usage tool called",
+      {
+        agentId: contextAgent.id,
+        getTokenUsageArgs: args,
+        type: tokenUsageType,
+      },
+      `get_${tokenUsageType}_token_usage tool called`,
     );
 
     try {
-      const targetProfileId = (args?.profile_id as string) || profile.id;
-      const usage = await LimitModel.getAgentTokenUsage(targetProfileId);
+      const targetId = (args?.id as string) || contextAgent.id;
+      const usage = await LimitModel.getAgentTokenUsage(targetId);
 
       return {
         content: [
           {
             type: "text",
-            text: `Token usage for profile ${targetProfileId}:\n\nTotal Input Tokens: ${usage.totalInputTokens.toLocaleString()}\nTotal Output Tokens: ${usage.totalOutputTokens.toLocaleString()}\nTotal Tokens: ${usage.totalTokens.toLocaleString()}`,
+            text: `Token usage for ${tokenUsageLabel} ${targetId}:\n\nTotal Input Tokens: ${usage.totalInputTokens.toLocaleString()}\nTotal Output Tokens: ${usage.totalOutputTokens.toLocaleString()}\nTotal Tokens: ${usage.totalTokens.toLocaleString()}`,
           },
         ],
         isError: false,
       };
     } catch (error) {
-      logger.error({ err: error }, "Error getting profile token usage");
+      logger.error(
+        { err: error },
+        `Error getting ${tokenUsageLabel} token usage`,
+      );
       return {
         content: [
           {
             type: "text",
-            text: `Error getting profile token usage: ${
+            text: `Error getting ${tokenUsageLabel} token usage: ${
               error instanceof Error ? error.message : "Unknown error"
             }`,
           },
@@ -678,7 +896,7 @@ export async function executeArchestraTool(
 
   if (toolName === TOOL_GET_AUTONOMY_POLICY_OPERATORS_FULL_NAME) {
     logger.info(
-      { profileId: profile.id },
+      { agentId: contextAgent.id },
       "get_autonomy_policy_operators tool called",
     );
 
@@ -722,7 +940,7 @@ export async function executeArchestraTool(
 
   if (toolName === TOOL_GET_TOOL_INVOCATION_POLICIES_FULL_NAME) {
     logger.info(
-      { profileId: profile.id },
+      { agentId: contextAgent.id },
       "get_tool_invocation_policies tool called",
     );
 
@@ -755,14 +973,19 @@ export async function executeArchestraTool(
 
   if (toolName === TOOL_CREATE_TOOL_INVOCATION_POLICY_FULL_NAME) {
     logger.info(
-      { profileId: profile.id, createArgs: args },
+      { agentId: contextAgent.id, createArgs: args },
       "create_tool_invocation_policy tool called",
     );
 
     try {
-      const policy = await ToolInvocationPolicyModel.create(
-        args as ToolInvocation.InsertToolInvocationPolicy,
-      );
+      const a = args ?? {};
+      const policy = await ToolInvocationPolicyModel.create({
+        toolId: a.toolId as string,
+        conditions: (a.conditions ??
+          []) as ToolInvocation.InsertToolInvocationPolicy["conditions"],
+        action: a.action as ToolInvocation.InsertToolInvocationPolicy["action"],
+        reason: (a.reason as string) ?? null,
+      });
       return {
         content: [
           {
@@ -790,7 +1013,7 @@ export async function executeArchestraTool(
 
   if (toolName === TOOL_GET_TOOL_INVOCATION_POLICY_FULL_NAME) {
     logger.info(
-      { profileId: profile.id, policyId: args?.id },
+      { agentId: contextAgent.id, policyId: args?.id },
       "get_tool_invocation_policy tool called",
     );
 
@@ -848,14 +1071,13 @@ export async function executeArchestraTool(
 
   if (toolName === TOOL_UPDATE_TOOL_INVOCATION_POLICY_FULL_NAME) {
     logger.info(
-      { profileId: profile.id, updateArgs: args },
+      { agentId: contextAgent.id, updateArgs: args },
       "update_tool_invocation_policy tool called",
     );
 
     try {
-      const { id, ...updateData } = args as {
-        id: string;
-      } & Partial<ToolInvocation.InsertToolInvocationPolicy>;
+      const a = args ?? {};
+      const id = a.id as string;
       if (!id) {
         return {
           content: [
@@ -867,6 +1089,17 @@ export async function executeArchestraTool(
           isError: true,
         };
       }
+
+      const updateData: Partial<ToolInvocation.InsertToolInvocationPolicy> = {};
+      if (a.toolId !== undefined) updateData.toolId = a.toolId as string;
+      if (a.conditions !== undefined)
+        updateData.conditions =
+          a.conditions as ToolInvocation.InsertToolInvocationPolicy["conditions"];
+      if (a.action !== undefined)
+        updateData.action =
+          a.action as ToolInvocation.InsertToolInvocationPolicy["action"];
+      if (a.reason !== undefined)
+        updateData.reason = (a.reason as string) ?? null;
 
       const policy = await ToolInvocationPolicyModel.update(id, updateData);
       if (!policy) {
@@ -908,7 +1141,7 @@ export async function executeArchestraTool(
 
   if (toolName === TOOL_DELETE_TOOL_INVOCATION_POLICY_FULL_NAME) {
     logger.info(
-      { profileId: profile.id, policyId: args?.id },
+      { agentId: contextAgent.id, policyId: args?.id },
       "delete_tool_invocation_policy tool called",
     );
 
@@ -966,7 +1199,7 @@ export async function executeArchestraTool(
 
   if (toolName === TOOL_GET_TRUSTED_DATA_POLICIES_FULL_NAME) {
     logger.info(
-      { profileId: profile.id },
+      { agentId: contextAgent.id },
       "get_trusted_data_policies tool called",
     );
 
@@ -999,14 +1232,19 @@ export async function executeArchestraTool(
 
   if (toolName === TOOL_CREATE_TRUSTED_DATA_POLICY_FULL_NAME) {
     logger.info(
-      { profileId: profile.id, createArgs: args },
+      { agentId: contextAgent.id, createArgs: args },
       "create_trusted_data_policy tool called",
     );
 
     try {
-      const policy = await TrustedDataPolicyModel.create(
-        args as TrustedData.InsertTrustedDataPolicy,
-      );
+      const a = args ?? {};
+      const policy = await TrustedDataPolicyModel.create({
+        toolId: a.toolId as string,
+        conditions: (a.conditions ??
+          []) as TrustedData.InsertTrustedDataPolicy["conditions"],
+        action: a.action as TrustedData.InsertTrustedDataPolicy["action"],
+        description: (a.description as string) ?? null,
+      });
       return {
         content: [
           {
@@ -1034,7 +1272,7 @@ export async function executeArchestraTool(
 
   if (toolName === TOOL_GET_TRUSTED_DATA_POLICY_FULL_NAME) {
     logger.info(
-      { profileId: profile.id, policyId: args?.id },
+      { agentId: contextAgent.id, policyId: args?.id },
       "get_trusted_data_policy tool called",
     );
 
@@ -1092,14 +1330,13 @@ export async function executeArchestraTool(
 
   if (toolName === TOOL_UPDATE_TRUSTED_DATA_POLICY_FULL_NAME) {
     logger.info(
-      { profileId: profile.id, updateArgs: args },
+      { agentId: contextAgent.id, updateArgs: args },
       "update_trusted_data_policy tool called",
     );
 
     try {
-      const { id, ...updateData } = args as {
-        id: string;
-      } & Partial<TrustedData.InsertTrustedDataPolicy>;
+      const a = args ?? {};
+      const id = a.id as string;
       if (!id) {
         return {
           content: [
@@ -1111,6 +1348,17 @@ export async function executeArchestraTool(
           isError: true,
         };
       }
+
+      const updateData: Partial<TrustedData.InsertTrustedDataPolicy> = {};
+      if (a.toolId !== undefined) updateData.toolId = a.toolId as string;
+      if (a.conditions !== undefined)
+        updateData.conditions =
+          a.conditions as TrustedData.InsertTrustedDataPolicy["conditions"];
+      if (a.action !== undefined)
+        updateData.action =
+          a.action as TrustedData.InsertTrustedDataPolicy["action"];
+      if (a.description !== undefined)
+        updateData.description = (a.description as string) ?? null;
 
       const policy = await TrustedDataPolicyModel.update(id, updateData);
       if (!policy) {
@@ -1152,7 +1400,7 @@ export async function executeArchestraTool(
 
   if (toolName === TOOL_DELETE_TRUSTED_DATA_POLICY_FULL_NAME) {
     logger.info(
-      { profileId: profile.id, policyId: args?.id },
+      { agentId: contextAgent.id, policyId: args?.id },
       "delete_trusted_data_policy tool called",
     );
 
@@ -1208,19 +1456,31 @@ export async function executeArchestraTool(
     }
   }
 
-  if (toolName === TOOL_BULK_ASSIGN_TOOLS_TO_PROFILES_FULL_NAME) {
+  if (
+    toolName === TOOL_BULK_ASSIGN_TOOLS_TO_AGENTS_FULL_NAME ||
+    toolName === TOOL_BULK_ASSIGN_TOOLS_TO_MCP_GATEWAYS_FULL_NAME
+  ) {
+    const bulkAssignTypeMap: Record<string, string> = {
+      [TOOL_BULK_ASSIGN_TOOLS_TO_AGENTS_FULL_NAME]: "agent",
+      [TOOL_BULK_ASSIGN_TOOLS_TO_MCP_GATEWAYS_FULL_NAME]: "mcp_gateway",
+    };
+    const bulkAssignType = bulkAssignTypeMap[toolName];
+    const idField = bulkAssignType === "agent" ? "agentId" : "mcpGatewayId";
+    const bulkAssignLabel =
+      bulkAssignType === "agent" ? "agents" : "MCP gateways";
+
     logger.info(
-      { profileId: profile.id, assignments: args?.assignments },
-      "bulk_assign_tools_to_profiles tool called",
+      {
+        agentId: contextAgent.id,
+        assignments: args?.assignments,
+        type: bulkAssignType,
+      },
+      `bulk_assign_tools_to_${bulkAssignType === "agent" ? "agents" : "mcp_gateways"} tool called`,
     );
 
     try {
-      const assignments = args?.assignments as Array<{
-        profileId: string;
-        toolId: string;
-        credentialSourceMcpServerId?: string | null;
-        executionSourceMcpServerId?: string | null;
-      }>;
+      // biome-ignore lint/suspicious/noExplicitAny: dynamic property access by idField
+      const assignments = args?.assignments as Array<Record<string, any>>;
 
       if (!assignments || !Array.isArray(assignments)) {
         return {
@@ -1237,7 +1497,7 @@ export async function executeArchestraTool(
       const results = await Promise.allSettled(
         assignments.map((assignment) =>
           assignToolToAgent(
-            assignment.profileId,
+            assignment[idField],
             assignment.toolId,
             assignment.credentialSourceMcpServerId,
             assignment.executionSourceMcpServerId,
@@ -1245,31 +1505,28 @@ export async function executeArchestraTool(
         ),
       );
 
-      const succeeded: { profileId: string; toolId: string }[] = [];
-      const failed: { profileId: string; toolId: string; error: string }[] = [];
-      const duplicates: { profileId: string; toolId: string }[] = [];
+      const succeeded: { [key: string]: string }[] = [];
+      const failed: { [key: string]: string }[] = [];
+      const duplicates: { [key: string]: string }[] = [];
 
       results.forEach((result, index) => {
-        const { profileId, toolId } = assignments[index];
+        const entityId = assignments[index][idField];
+        const { toolId } = assignments[index];
         if (result.status === "fulfilled") {
           if (result.value === null || result.value === "updated") {
-            // Success (created or updated)
-            succeeded.push({ profileId, toolId });
+            succeeded.push({ [idField]: entityId, toolId });
           } else if (result.value === "duplicate") {
-            // Already assigned with same credentials
-            duplicates.push({ profileId, toolId });
+            duplicates.push({ [idField]: entityId, toolId });
           } else {
-            // Validation error
             const error = result.value.error.message || "Unknown error";
-            failed.push({ profileId, toolId, error });
+            failed.push({ [idField]: entityId, toolId, error });
           }
         } else if (result.status === "rejected") {
-          // Runtime error
           const error =
             result.reason instanceof Error
               ? result.reason.message
               : "Unknown error";
-          failed.push({ profileId, toolId, error });
+          failed.push({ [idField]: entityId, toolId, error });
         }
       });
 
@@ -1283,12 +1540,15 @@ export async function executeArchestraTool(
         isError: false,
       };
     } catch (error) {
-      logger.error({ err: error }, "Error bulk assigning tools to profiles");
+      logger.error(
+        { err: error },
+        `Error bulk assigning tools to ${bulkAssignLabel}`,
+      );
       return {
         content: [
           {
             type: "text",
-            text: `Error bulk assigning tools to profiles: ${
+            text: `Error bulk assigning tools to ${bulkAssignLabel}: ${
               error instanceof Error ? error.message : "Unknown error"
             }`,
           },
@@ -1300,7 +1560,7 @@ export async function executeArchestraTool(
 
   if (toolName === TOOL_GET_MCP_SERVERS_FULL_NAME) {
     logger.info(
-      { profileId: profile.id, filters: args },
+      { agentId: contextAgent.id, filters: args },
       "get_mcp_servers tool called",
     );
 
@@ -1336,7 +1596,7 @@ export async function executeArchestraTool(
 
   if (toolName === TOOL_GET_MCP_SERVER_TOOLS_FULL_NAME) {
     logger.info(
-      { profileId: profile.id, mcpServerId: args?.mcpServerId },
+      { agentId: contextAgent.id, mcpServerId: args?.mcpServerId },
       "get_mcp_server_tools tool called",
     );
 
@@ -1401,10 +1661,22 @@ export async function executeArchestraTool(
     }
   }
 
-  if (toolName === TOOL_GET_PROFILE_FULL_NAME) {
+  if (
+    toolName === TOOL_GET_AGENT_FULL_NAME ||
+    toolName === TOOL_GET_LLM_PROXY_FULL_NAME ||
+    toolName === TOOL_GET_MCP_GATEWAY_FULL_NAME
+  ) {
+    const getTypeMap: Record<string, string> = {
+      [TOOL_GET_AGENT_FULL_NAME]: "agent",
+      [TOOL_GET_LLM_PROXY_FULL_NAME]: "llm_proxy",
+      [TOOL_GET_MCP_GATEWAY_FULL_NAME]: "mcp_gateway",
+    };
+    const expectedType = getTypeMap[toolName];
+    const getLabel = expectedType.replace("_", " ");
+
     logger.info(
-      { profileId: profile.id, requestedProfileId: args?.id },
-      "get_profile tool called",
+      { agentId: contextAgent.id, requestedId: args?.id, type: expectedType },
+      `get_${expectedType} tool called`,
     );
 
     try {
@@ -1422,13 +1694,25 @@ export async function executeArchestraTool(
         };
       }
 
-      const requestedProfile = await AgentModel.findById(id);
-      if (!requestedProfile) {
+      const record = await AgentModel.findById(id);
+      if (!record) {
         return {
           content: [
             {
               type: "text",
-              text: "Profile not found",
+              text: `${getLabel} not found`,
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      if (record.agentType !== expectedType) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error: The requested entity is a ${record.agentType}, not a ${expectedType}.`,
             },
           ],
           isError: true,
@@ -1439,18 +1723,260 @@ export async function executeArchestraTool(
         content: [
           {
             type: "text",
-            text: JSON.stringify(requestedProfile, null, 2),
+            text: JSON.stringify(record, null, 2),
           },
         ],
         isError: false,
       };
     } catch (error) {
-      logger.error({ err: error }, "Error getting profile");
+      logger.error({ err: error }, `Error getting ${getLabel}`);
       return {
         content: [
           {
             type: "text",
-            text: `Error getting profile: ${
+            text: `Error getting ${getLabel}: ${
+              error instanceof Error ? error.message : "Unknown error"
+            }`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+
+  if (toolName === TOOL_QUERY_KNOWLEDGE_GRAPH_FULL_NAME) {
+    logger.info(
+      { agentId: contextAgent.id, queryArgs: args },
+      "query_knowledge_graph tool called",
+    );
+
+    try {
+      const query = args?.query as string;
+      const modeArg = args?.mode as string | undefined;
+
+      if (!query || query.trim() === "") {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Error: query parameter is required and cannot be empty",
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      // Validate mode if provided
+      let mode: QueryMode = "hybrid";
+      if (modeArg) {
+        const parseResult = QueryModeSchema.safeParse(modeArg);
+        if (!parseResult.success) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error: Invalid mode "${modeArg}". Must be one of: local, global, hybrid, naive`,
+              },
+            ],
+            isError: true,
+          };
+        }
+        mode = parseResult.data;
+      }
+
+      // Get the knowledge graph provider
+      const provider = getKnowledgeGraphProvider();
+      if (!provider) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Error: Knowledge graph provider is not configured. Please configure the ARCHESTRA_KNOWLEDGE_GRAPH_PROVIDER environment variable.",
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      logger.info(
+        {
+          agentId: contextAgent.id,
+          agentName: contextAgent.name,
+          mode,
+        },
+        "Querying knowledge graph",
+      );
+
+      // Execute the query
+      const result = await provider.queryDocument(query, {
+        mode,
+      });
+
+      if (result.error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Error querying knowledge graph: ${result.error}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: result.answer,
+          },
+        ],
+        isError: false,
+      };
+    } catch (error) {
+      logger.error({ err: error }, "Error querying knowledge graph");
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error querying knowledge graph: ${
+              error instanceof Error ? error.message : "Unknown error"
+            }`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+
+  if (toolName === TOOL_TODO_WRITE_FULL_NAME) {
+    logger.info(
+      { agentId: contextAgent.id, todoArgs: args },
+      "todo_write tool called",
+    );
+
+    try {
+      const todos = args?.todos as
+        | Array<{
+            id: number;
+            content: string;
+            status: string;
+          }>
+        | undefined;
+
+      if (!todos || !Array.isArray(todos)) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Error: todos parameter is required and must be an array",
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      // For now, just return a success message
+      // In the future, this could persist todos to database
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Successfully wrote ${todos.length} todo item(s) to the conversation`,
+          },
+        ],
+        isError: false,
+      };
+    } catch (error) {
+      logger.error({ err: error }, "Error writing todos");
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error writing todos: ${
+              error instanceof Error ? error.message : "Unknown error"
+            }`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+
+  if (toolName === TOOL_ARTIFACT_WRITE_FULL_NAME) {
+    logger.info(
+      { agentId: contextAgent.id, artifactArgs: args, context },
+      "artifact_write tool called",
+    );
+
+    try {
+      const content = args?.content as string | undefined;
+
+      if (!content || typeof content !== "string") {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Error: content parameter is required and must be a string",
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      // Check if we have conversation context
+      if (
+        !context.conversationId ||
+        !context.userId ||
+        !context.organizationId
+      ) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Error: This tool requires conversation context. It can only be used within an active chat conversation.",
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      // Update the conversation's artifact
+      const updated = await ConversationModel.update(
+        context.conversationId,
+        context.userId,
+        context.organizationId,
+        { artifact: content },
+      );
+
+      if (!updated) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Error: Failed to update conversation artifact. The conversation may not exist or you may not have permission to update it.",
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Successfully updated conversation artifact (${content.length} characters)`,
+          },
+        ],
+        isError: false,
+      };
+    } catch (error) {
+      logger.error({ err: error }, "Error writing artifact");
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error writing artifact: ${
               error instanceof Error ? error.message : "Unknown error"
             }`,
           },
@@ -1467,6 +1993,18 @@ export async function executeArchestraTool(
   };
 }
 
+function isAbortLikeError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  if (error.name === "AbortError") {
+    return true;
+  }
+
+  return error.message.toLowerCase().includes("abort");
+}
+
 /**
  * Get the list of Archestra MCP tools
  */
@@ -1475,7 +2013,7 @@ export function getArchestraMcpTools(): Tool[] {
     {
       name: TOOL_WHOAMI_FULL_NAME,
       title: "Who Am I",
-      description: "Returns the name and ID of the current profile",
+      description: "Returns the name and ID of the current agent",
       inputSchema: {
         type: "object",
         properties: {},
@@ -1507,19 +2045,19 @@ export function getArchestraMcpTools(): Tool[] {
       name: TOOL_CREATE_LIMIT_FULL_NAME,
       title: "Create Limit",
       description:
-        "Create a new cost or usage limit for an organization, team, or profile. Supports token_cost, mcp_server_calls, and tool_calls limit types.",
+        "Create a new cost or usage limit for an organization, team, agent, LLM proxy, or MCP gateway. Supports token_cost, mcp_server_calls, and tool_calls limit types.",
       inputSchema: {
         type: "object",
         properties: {
           entity_type: {
             type: "string",
-            enum: ["organization", "team", "profile"],
+            enum: ["organization", "team", "agent", "llm_proxy", "mcp_gateway"],
             description: "The type of entity to apply the limit to",
           },
           entity_id: {
             type: "string",
             description:
-              "The ID of the entity (organization, team, or profile)",
+              "The ID of the entity (organization, team, agent, LLM proxy, or MCP gateway)",
           },
           limit_type: {
             type: "string",
@@ -1564,7 +2102,7 @@ export function getArchestraMcpTools(): Tool[] {
         properties: {
           entity_type: {
             type: "string",
-            enum: ["organization", "team", "profile"],
+            enum: ["organization", "team", "agent", "llm_proxy", "mcp_gateway"],
             description: "Optional filter by entity type",
           },
           entity_id: {
@@ -1616,55 +2154,61 @@ export function getArchestraMcpTools(): Tool[] {
       _meta: {},
     },
     {
-      name: TOOL_GET_PROFILE_TOKEN_USAGE_FULL_NAME,
-      title: "Get Profile Token Usage",
+      name: TOOL_GET_AGENT_TOKEN_USAGE_FULL_NAME,
+      title: "Get Agent Token Usage",
       description:
-        "Get the total token usage (input and output) for a specific profile. If no profile_id is provided, returns usage for the current profile.",
+        "Get the total token usage (input and output) for a specific agent. If no id is provided, returns usage for the current agent.",
       inputSchema: {
         type: "object",
         properties: {
-          profile_id: {
+          id: {
             type: "string",
             description:
-              "The ID of the profile to get usage for (optional, defaults to current profile)",
+              "The ID of the agent to get usage for (optional, defaults to current agent)",
           },
         },
         required: [],
       },
+      annotations: {},
+      _meta: {},
     },
     {
-      name: TOOL_CREATE_PROFILE_FULL_NAME,
-      title: "Create Profile",
+      name: TOOL_GET_LLM_PROXY_TOKEN_USAGE_FULL_NAME,
+      title: "Get LLM Proxy Token Usage",
       description:
-        "Create a new profile with the specified name and optional configuration. The profile will be automatically assigned Archestra built-in tools.",
+        "Get the total token usage (input and output) for a specific LLM proxy. If no id is provided, returns usage for the current agent.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          id: {
+            type: "string",
+            description:
+              "The ID of the LLM proxy to get usage for (optional, defaults to current agent)",
+          },
+        },
+        required: [],
+      },
+      annotations: {},
+      _meta: {},
+    },
+    {
+      name: TOOL_CREATE_AGENT_FULL_NAME,
+      title: "Create Agent",
+      description:
+        "Create a new agent with the specified name, optional labels, and optional prompts.",
       inputSchema: {
         type: "object",
         properties: {
           name: {
             type: "string",
-            description: "The name of the profile (required)",
+            description: "The name of the agent (required)",
           },
-          /**
-           * TODO: in order to enable this we need to expose GET/CREATE /api/teams tools such that the profile
-           * is able to fetch (or create) teams and get their ids (uuids).. otherwise it will try passing in
-           * team names (which is not currently supported).. or we support passing in team names..
-           */
-          // teams: {
-          //   type: "array",
-          //   items: {
-          //     type: "string",
-          //   },
-          //   description: "Array of team IDs to assign the profile to (optional)",
-          // },
           labels: {
             type: "array",
             items: {
               type: "object",
               properties: {
-                key: {
-                  type: "string",
-                  description: "The label key",
-                },
+                key: { type: "string", description: "The label key" },
                 value: {
                   type: "string",
                   description: "The value for the label",
@@ -1672,7 +2216,83 @@ export function getArchestraMcpTools(): Tool[] {
               },
               required: ["key", "value"],
             },
-            description: "Array of labels to assign to the profile (optional)",
+            description: "Array of labels to assign to the agent (optional)",
+          },
+          systemPrompt: {
+            type: "string",
+            description: "System prompt for the agent (optional)",
+          },
+          userPrompt: {
+            type: "string",
+            description: "User prompt for the agent (optional)",
+          },
+        },
+        required: ["name"],
+      },
+      annotations: {},
+      _meta: {},
+    },
+    {
+      name: TOOL_CREATE_LLM_PROXY_FULL_NAME,
+      title: "Create LLM Proxy",
+      description:
+        "Create a new LLM proxy with the specified name and optional labels.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          name: {
+            type: "string",
+            description: "The name of the LLM proxy (required)",
+          },
+          labels: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                key: { type: "string", description: "The label key" },
+                value: {
+                  type: "string",
+                  description: "The value for the label",
+                },
+              },
+              required: ["key", "value"],
+            },
+            description:
+              "Array of labels to assign to the LLM proxy (optional)",
+          },
+        },
+        required: ["name"],
+      },
+      annotations: {},
+      _meta: {},
+    },
+    {
+      name: TOOL_CREATE_MCP_GATEWAY_FULL_NAME,
+      title: "Create MCP Gateway",
+      description:
+        "Create a new MCP gateway with the specified name and optional labels.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          name: {
+            type: "string",
+            description: "The name of the MCP gateway (required)",
+          },
+          labels: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                key: { type: "string", description: "The label key" },
+                value: {
+                  type: "string",
+                  description: "The value for the label",
+                },
+              },
+              required: ["key", "value"],
+            },
+            description:
+              "Array of labels to assign to the MCP gateway (optional)",
           },
         },
         required: ["name"],
@@ -1712,39 +2332,58 @@ export function getArchestraMcpTools(): Tool[] {
       inputSchema: {
         type: "object",
         properties: {
-          profileToolId: {
+          toolId: {
             type: "string",
-            description: "The ID of the profile tool this policy applies to",
+            description: "The ID of the tool (UUID from the tools table)",
           },
-          operator: {
-            type: "string",
-            enum: [
-              "equal",
-              "notEqual",
-              "contains",
-              "notContains",
-              "startsWith",
-              "endsWith",
-              "regex",
-            ],
-            description: "The comparison operator to use",
-          },
-          path: {
-            type: "string",
+          conditions: {
+            type: "array",
             description:
-              "The path in the context to evaluate (e.g., 'user.email')",
-          },
-          value: {
-            type: "string",
-            description: "The value to compare against",
+              "Array of conditions that must all match (AND logic). Empty array means unconditional.",
+            items: {
+              type: "object",
+              properties: {
+                key: {
+                  type: "string",
+                  description:
+                    "The argument name or context path to evaluate (e.g., 'url', 'context.externalAgentId')",
+                },
+                operator: {
+                  type: "string",
+                  enum: [
+                    "equal",
+                    "notEqual",
+                    "contains",
+                    "notContains",
+                    "startsWith",
+                    "endsWith",
+                    "regex",
+                  ],
+                },
+                value: {
+                  type: "string",
+                  description: "The value to compare against",
+                },
+              },
+              required: ["key", "operator", "value"],
+            },
           },
           action: {
             type: "string",
-            enum: ["allow_when_context_is_untrusted", "block_always"],
+            enum: [
+              "allow_when_context_is_untrusted",
+              "block_when_context_is_untrusted",
+              "block_always",
+            ],
             description: "The action to take when the policy matches",
           },
+          reason: {
+            type: "string",
+            description:
+              "Human-readable explanation for why this policy exists",
+          },
         },
-        required: ["profileToolId", "operator", "path", "value", "action"],
+        required: ["toolId", "conditions", "action"],
       },
       annotations: {},
       _meta: {},
@@ -1775,37 +2414,57 @@ export function getArchestraMcpTools(): Tool[] {
         properties: {
           id: {
             type: "string",
-            description: "The ID of the tool invocation policy",
+            description: "The ID of the tool invocation policy to update",
           },
-          profileToolId: {
+          toolId: {
             type: "string",
-            description: "The ID of the profile tool this policy applies to",
+            description: "The ID of the tool (UUID from the tools table)",
           },
-          operator: {
-            type: "string",
-            enum: [
-              "equal",
-              "notEqual",
-              "contains",
-              "notContains",
-              "startsWith",
-              "endsWith",
-              "regex",
-            ],
-            description: "The comparison operator to use",
-          },
-          path: {
-            type: "string",
-            description: "The path in the context to evaluate",
-          },
-          value: {
-            type: "string",
-            description: "The value to compare against",
+          conditions: {
+            type: "array",
+            description:
+              "Array of conditions that must all match (AND logic). Empty array means unconditional.",
+            items: {
+              type: "object",
+              properties: {
+                key: {
+                  type: "string",
+                  description:
+                    "The argument name or context path to evaluate (e.g., 'url', 'context.externalAgentId')",
+                },
+                operator: {
+                  type: "string",
+                  enum: [
+                    "equal",
+                    "notEqual",
+                    "contains",
+                    "notContains",
+                    "startsWith",
+                    "endsWith",
+                    "regex",
+                  ],
+                },
+                value: {
+                  type: "string",
+                  description: "The value to compare against",
+                },
+              },
+              required: ["key", "operator", "value"],
+            },
           },
           action: {
             type: "string",
-            enum: ["allow_when_context_is_untrusted", "block_always"],
+            enum: [
+              "allow_when_context_is_untrusted",
+              "block_when_context_is_untrusted",
+              "block_always",
+            ],
             description: "The action to take when the policy matches",
+          },
+          reason: {
+            type: "string",
+            description:
+              "Human-readable explanation for why this policy exists",
           },
         },
         required: ["id"],
@@ -1849,38 +2508,59 @@ export function getArchestraMcpTools(): Tool[] {
       inputSchema: {
         type: "object",
         properties: {
-          profileToolId: {
+          toolId: {
             type: "string",
-            description: "The ID of the profile tool this policy applies to",
+            description: "The ID of the tool (UUID from the tools table)",
           },
-          operator: {
-            type: "string",
-            enum: [
-              "equal",
-              "notEqual",
-              "contains",
-              "notContains",
-              "startsWith",
-              "endsWith",
-              "regex",
-            ],
-            description: "The comparison operator to use",
-          },
-          path: {
-            type: "string",
-            description: "The path in the tool result to evaluate",
-          },
-          value: {
-            type: "string",
-            description: "The value to compare against",
+          conditions: {
+            type: "array",
+            description:
+              "Array of conditions that must all match (AND logic). Empty array means unconditional.",
+            items: {
+              type: "object",
+              properties: {
+                key: {
+                  type: "string",
+                  description:
+                    "The attribute key or path in the tool result to evaluate (e.g., 'emails[*].from', 'source')",
+                },
+                operator: {
+                  type: "string",
+                  enum: [
+                    "equal",
+                    "notEqual",
+                    "contains",
+                    "notContains",
+                    "startsWith",
+                    "endsWith",
+                    "regex",
+                  ],
+                },
+                value: {
+                  type: "string",
+                  description: "The value to compare against",
+                },
+              },
+              required: ["key", "operator", "value"],
+            },
           },
           action: {
             type: "string",
-            enum: ["block_always", "mark_as_trusted", "sanitize_with_dual_llm"],
+            enum: [
+              "block_always",
+              "mark_as_trusted",
+              "mark_as_untrusted",
+              "sanitize_with_dual_llm",
+            ],
             description: "The action to take when the policy matches",
           },
+          description: {
+            type: "string",
+            description:
+              "Human-readable explanation for why this policy exists",
+          },
         },
-        required: ["profileToolId", "operator", "path", "value", "action"],
+        required: ["toolId", "conditions", "action"],
       },
       annotations: {},
       _meta: {},
@@ -1911,37 +2591,58 @@ export function getArchestraMcpTools(): Tool[] {
         properties: {
           id: {
             type: "string",
-            description: "The ID of the trusted data policy",
+            description: "The ID of the trusted data policy to update",
           },
-          profileToolId: {
+          toolId: {
             type: "string",
-            description: "The ID of the profile tool this policy applies to",
+            description: "The ID of the tool (UUID from the tools table)",
           },
-          operator: {
-            type: "string",
-            enum: [
-              "equal",
-              "notEqual",
-              "contains",
-              "notContains",
-              "startsWith",
-              "endsWith",
-              "regex",
-            ],
-            description: "The comparison operator to use",
-          },
-          path: {
-            type: "string",
-            description: "The path in the tool result to evaluate",
-          },
-          value: {
-            type: "string",
-            description: "The value to compare against",
+          conditions: {
+            type: "array",
+            description:
+              "Array of conditions that must all match (AND logic). Empty array means unconditional.",
+            items: {
+              type: "object",
+              properties: {
+                key: {
+                  type: "string",
+                  description:
+                    "The attribute key or path in the tool result to evaluate (e.g., 'emails[*].from', 'source')",
+                },
+                operator: {
+                  type: "string",
+                  enum: [
+                    "equal",
+                    "notEqual",
+                    "contains",
+                    "notContains",
+                    "startsWith",
+                    "endsWith",
+                    "regex",
+                  ],
+                },
+                value: {
+                  type: "string",
+                  description: "The value to compare against",
+                },
+              },
+              required: ["key", "operator", "value"],
+            },
           },
           action: {
             type: "string",
-            enum: ["block_always", "mark_as_trusted", "sanitize_with_dual_llm"],
+            enum: [
+              "block_always",
+              "mark_as_trusted",
+              "mark_as_untrusted",
+              "sanitize_with_dual_llm",
+            ],
             description: "The action to take when the policy matches",
+          },
+          description: {
+            type: "string",
+            description:
+              "Human-readable explanation for why this policy exists",
           },
         },
         required: ["id"],
@@ -1967,10 +2668,10 @@ export function getArchestraMcpTools(): Tool[] {
       _meta: {},
     },
     {
-      name: TOOL_BULK_ASSIGN_TOOLS_TO_PROFILES_FULL_NAME,
-      title: "Bulk Assign Tools to Profiles",
+      name: TOOL_BULK_ASSIGN_TOOLS_TO_AGENTS_FULL_NAME,
+      title: "Bulk Assign Tools to Agents",
       description:
-        "Assign multiple tools to multiple profiles in bulk with validation and error handling",
+        "Assign multiple tools to multiple agents in bulk with validation and error handling",
       inputSchema: {
         type: "object",
         properties: {
@@ -1980,9 +2681,9 @@ export function getArchestraMcpTools(): Tool[] {
             items: {
               type: "object",
               properties: {
-                profileId: {
+                agentId: {
                   type: "string",
-                  description: "The ID of the profile to assign the tool to",
+                  description: "The ID of the agent to assign the tool to",
                 },
                 toolId: {
                   type: "string",
@@ -1999,7 +2700,50 @@ export function getArchestraMcpTools(): Tool[] {
                     "Optional ID of the MCP server to use as execution source",
                 },
               },
-              required: ["profileId", "toolId"],
+              required: ["agentId", "toolId"],
+            },
+          },
+        },
+        required: ["assignments"],
+      },
+      annotations: {},
+      _meta: {},
+    },
+    {
+      name: TOOL_BULK_ASSIGN_TOOLS_TO_MCP_GATEWAYS_FULL_NAME,
+      title: "Bulk Assign Tools to MCP Gateways",
+      description:
+        "Assign multiple tools to multiple MCP gateways in bulk with validation and error handling",
+      inputSchema: {
+        type: "object",
+        properties: {
+          assignments: {
+            type: "array",
+            description: "Array of tool assignments to create",
+            items: {
+              type: "object",
+              properties: {
+                mcpGatewayId: {
+                  type: "string",
+                  description:
+                    "The ID of the MCP gateway to assign the tool to",
+                },
+                toolId: {
+                  type: "string",
+                  description: "The ID of the tool to assign",
+                },
+                credentialSourceMcpServerId: {
+                  type: "string",
+                  description:
+                    "Optional ID of the MCP server to use as credential source",
+                },
+                executionSourceMcpServerId: {
+                  type: "string",
+                  description:
+                    "Optional ID of the MCP server to use as execution source",
+                },
+              },
+              required: ["mcpGatewayId", "toolId"],
             },
           },
         },
@@ -2038,19 +2782,80 @@ export function getArchestraMcpTools(): Tool[] {
       _meta: {},
     },
     {
-      name: TOOL_GET_PROFILE_FULL_NAME,
-      title: "Get Profile",
+      name: TOOL_GET_AGENT_FULL_NAME,
+      title: "Get Agent",
       description:
-        "Get a specific profile by ID with full details including labels and team assignments",
+        "Get a specific agent by ID with full details including labels and team assignments",
       inputSchema: {
         type: "object",
         properties: {
           id: {
             type: "string",
-            description: "The ID of the profile to retrieve",
+            description: "The ID of the agent to retrieve",
           },
         },
         required: ["id"],
+      },
+      annotations: {},
+      _meta: {},
+    },
+    {
+      name: TOOL_GET_LLM_PROXY_FULL_NAME,
+      title: "Get LLM Proxy",
+      description:
+        "Get a specific LLM proxy by ID with full details including labels and team assignments",
+      inputSchema: {
+        type: "object",
+        properties: {
+          id: {
+            type: "string",
+            description: "The ID of the LLM proxy to retrieve",
+          },
+        },
+        required: ["id"],
+      },
+      annotations: {},
+      _meta: {},
+    },
+    {
+      name: TOOL_GET_MCP_GATEWAY_FULL_NAME,
+      title: "Get MCP Gateway",
+      description:
+        "Get a specific MCP gateway by ID with full details including labels and team assignments",
+      inputSchema: {
+        type: "object",
+        properties: {
+          id: {
+            type: "string",
+            description: "The ID of the MCP gateway to retrieve",
+          },
+        },
+        required: ["id"],
+      },
+      annotations: {},
+      _meta: {},
+    },
+    {
+      name: TOOL_QUERY_KNOWLEDGE_GRAPH_FULL_NAME,
+      title: "Query Knowledge Graph",
+      description:
+        "Query the organization's knowledge graph to retrieve information from uploaded documents. Uses graph-based retrieval augmented generation (GraphRAG) for accurate and contextual results.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description:
+              "The natural language query to search the knowledge graph",
+          },
+          mode: {
+            type: "string",
+            enum: ["local", "global", "hybrid", "naive"],
+            description:
+              "Query mode: 'local' uses only local context, 'global' uses global context across all documents, 'hybrid' combines both (recommended), 'naive' uses simple RAG without graph-based retrieval. Defaults to 'hybrid'.",
+          },
+        },
+        required: ["query"],
       },
       annotations: {},
       _meta: {},
@@ -2068,5 +2873,127 @@ export function getArchestraMcpTools(): Tool[] {
       annotations: {},
       _meta: {},
     },
+    {
+      name: TOOL_TODO_WRITE_FULL_NAME,
+      title: "Write Todos",
+      description:
+        "Write todos to the current conversation. You have access to this tool to help you manage and plan tasks. Use it VERY frequently to ensure that you are tracking your tasks and giving the user visibility into your progress. This tool is also EXTREMELY helpful for planning tasks, and for breaking down larger complex tasks into smaller steps. If you do not use this tool when planning, you may forget to do important tasks - and that is unacceptable. It is critical that you mark todos as completed as soon as you are done with a task. Do not batch up multiple tasks before marking them as completed.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          todos: {
+            type: "array",
+            description: "Array of todo items to write to the conversation",
+            items: {
+              type: "object",
+              properties: {
+                id: {
+                  type: "integer",
+                  description: "Unique identifier for the todo item",
+                },
+                content: {
+                  type: "string",
+                  description: "The content/description of the todo item",
+                },
+                status: {
+                  type: "string",
+                  enum: ["pending", "in_progress", "completed"],
+                  description: "The current status of the todo item",
+                },
+              },
+              required: ["id", "content", "status"],
+            },
+          },
+        },
+        required: ["todos"],
+      },
+      annotations: {},
+      _meta: {},
+    },
+    {
+      name: TOOL_ARTIFACT_WRITE_FULL_NAME,
+      title: "Write Artifact",
+      description:
+        "Write or update a markdown artifact for the current conversation. Use this tool to maintain a persistent document that evolves throughout the conversation. The artifact should contain well-structured markdown content that can be referenced and updated as the conversation progresses. Each call to this tool completely replaces the existing artifact content. " +
+        "Mermaid diagrams: Use ```mermaid blocks. " +
+        "Supports: Headers, emphasis, lists, links, images, code blocks, tables, blockquotes, task lists, mermaid diagrams.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          content: {
+            type: "string",
+            description:
+              "The markdown content to write to the conversation artifact. This will completely replace any existing artifact content.",
+          },
+        },
+        required: ["content"],
+      },
+      annotations: {},
+      _meta: {},
+    },
   ];
+}
+
+/**
+ * Get agent delegation tools for an agent from the database
+ * Each configured delegation becomes a separate tool (e.g., delegate_to_research_bot)
+ * Note: Agent tools are separate from Archestra tools - they enable agent-to-agent delegation
+ */
+export async function getAgentTools(context: {
+  agentId: string;
+  organizationId: string;
+  userId?: string;
+  /** Skip user access check (for A2A/ChatOps flows where caller has elevated permissions) */
+  skipAccessCheck?: boolean;
+}): Promise<Tool[]> {
+  const { agentId, organizationId, userId, skipAccessCheck } = context;
+
+  // Get all delegation tools assigned to this agent
+  const allToolsWithDetails =
+    await ToolModel.getDelegationToolsByAgent(agentId);
+
+  // Filter by user access if user ID is provided (skip for A2A/ChatOps flows)
+  let accessibleTools = allToolsWithDetails;
+  if (userId && !skipAccessCheck) {
+    // Check if user has profile admin permission directly (don't trust caller)
+    const isAgentAdmin = await userHasPermission(
+      userId,
+      organizationId,
+      "profile",
+      "admin",
+    );
+
+    const userAccessibleAgentIds =
+      await AgentTeamModel.getUserAccessibleAgentIds(userId, isAgentAdmin);
+    accessibleTools = allToolsWithDetails.filter((t) =>
+      userAccessibleAgentIds.includes(t.targetAgent.id),
+    );
+  }
+
+  logger.debug(
+    {
+      agentId,
+      organizationId,
+      userId,
+      allToolCount: allToolsWithDetails.length,
+      accessibleToolCount: accessibleTools.length,
+    },
+    "Fetched agent delegation tools from database",
+  );
+
+  // Convert DB tools to MCP Tool format
+  return accessibleTools.map((t) => {
+    const description = t.targetAgent.description
+      ? `Delegate task to agent: ${t.targetAgent.name}. ${t.targetAgent.description.substring(0, 400)}`
+      : `Delegate task to agent: ${t.targetAgent.name}`;
+
+    return {
+      name: t.tool.name,
+      title: t.targetAgent.name,
+      description,
+      inputSchema: t.tool.parameters as Tool["inputSchema"],
+      annotations: {},
+      _meta: { targetAgentId: t.targetAgent.id },
+    };
+  });
 }

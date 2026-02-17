@@ -6,7 +6,6 @@ import {
   unique,
   uuid,
 } from "drizzle-orm/pg-core";
-import type { ToolResultTreatment } from "@/types";
 import agentsTable from "./agent";
 import mcpServerTable from "./mcp-server";
 import toolsTable from "./tool";
@@ -21,16 +20,8 @@ const agentToolsTable = pgTable(
     toolId: uuid("tool_id")
       .notNull()
       .references(() => toolsTable.id, { onDelete: "cascade" }),
-    allowUsageWhenUntrustedDataIsPresent: boolean(
-      "allow_usage_when_untrusted_data_is_present",
-    )
-      .notNull()
-      .default(false),
-    toolResultTreatment: text("tool_result_treatment")
-      .$type<ToolResultTreatment>()
-      .notNull()
-      .default("untrusted"),
     responseModifierTemplate: text("response_modifier_template"),
+    // credentialSourceMcpServerId specifies which !!!REMOTE!!! MCP server to use for credentials
     credentialSourceMcpServerId: uuid(
       "credential_source_mcp_server_id",
     ).references(() => mcpServerTable.id, { onDelete: "set null" }),
@@ -44,16 +35,6 @@ const agentToolsTable = pgTable(
     useDynamicTeamCredential: boolean("use_dynamic_team_credential")
       .notNull()
       .default(false),
-    policiesAutoConfiguredAt: timestamp("policies_auto_configured_at", {
-      mode: "date",
-    }),
-    policiesAutoConfiguringStartedAt: timestamp(
-      "policies_auto_configuring_started_at",
-      {
-        mode: "date",
-      },
-    ),
-    policiesAutoConfiguredReasoning: text("policies_auto_configured_reasoning"),
     createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { mode: "date" })
       .notNull()

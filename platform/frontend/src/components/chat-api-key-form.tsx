@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { useFeatureFlag } from "@/lib/features.hook";
 import { useTeams } from "@/lib/team.query";
+import { WithPermissions } from "./roles/with-permissions";
 
 const ExternalSecretSelector = lazy(
   () =>
@@ -30,14 +31,6 @@ const InlineVaultSecretSelector = lazy(
     import("@/components/inline-vault-secret-selector.ee"),
 );
 
-const WithPermissions = lazy(() =>
-  // biome-ignore lint/style/noRestrictedImports: dynamic import
-  import("./roles/with-permissions.ee").then((mod) => ({
-    default: mod.WithPermissions,
-  })),
-);
-
-// Reuse types from generated API types
 type CreateChatApiKeyBody = archestraApiTypes.CreateChatApiKeyData["body"];
 
 // Form values type - combines create/update fields
@@ -64,6 +57,7 @@ const PROVIDER_CONFIG: Record<
     enabled: boolean;
     consoleUrl: string;
     consoleName: string;
+    description?: string;
   }
 > = {
   anthropic: {
@@ -89,6 +83,63 @@ const PROVIDER_CONFIG: Record<
     enabled: true,
     consoleUrl: "https://aistudio.google.com/app/apikey",
     consoleName: "Google AI Studio",
+  },
+  cerebras: {
+    name: "Cerebras",
+    icon: "/icons/cerebras.png",
+    placeholder: "csk-...",
+    enabled: true,
+    consoleUrl: "https://cloud.cerebras.ai/platform",
+    consoleName: "Cerebras Cloud",
+  },
+  cohere: {
+    name: "Cohere",
+    icon: "/icons/cohere.png",
+    placeholder: "...",
+    enabled: true,
+    consoleUrl: "https://dashboard.cohere.com/api-keys",
+    consoleName: "Cohere Dashboard",
+  },
+  mistral: {
+    name: "Mistral AI",
+    icon: "/icons/mistral.png",
+    placeholder: "...",
+    enabled: true,
+    consoleUrl: "https://console.mistral.ai/api-keys",
+    consoleName: "Mistral AI Console",
+  },
+  vllm: {
+    name: "vLLM",
+    icon: "/icons/vllm.png",
+    placeholder: "optional-api-key",
+    enabled: true,
+    consoleUrl: "https://docs.vllm.ai/",
+    consoleName: "vLLM Docs",
+  },
+  ollama: {
+    name: "Ollama",
+    icon: "/icons/ollama.png",
+    placeholder: "optional-api-key",
+    enabled: true,
+    consoleUrl: "https://ollama.ai/",
+    consoleName: "Ollama",
+    description: "For self-hosted Ollama, an API key is not required.",
+  },
+  zhipuai: {
+    name: "Zhipu AI",
+    icon: "/icons/zhipuai.png",
+    placeholder: "...",
+    enabled: true,
+    consoleUrl: "https://z.ai/model-api",
+    consoleName: "Zhipu AI Platform",
+  },
+  bedrock: {
+    name: "AWS Bedrock",
+    icon: "/icons/bedrock.png",
+    placeholder: "Bearer token...",
+    enabled: true,
+    consoleUrl: "https://console.aws.amazon.com/bedrock",
+    consoleName: "AWS Console",
   },
 } as const;
 
@@ -125,6 +176,11 @@ interface ChatApiKeyFormProps {
    * Whether mutation is pending (from parent)
    */
   isPending?: boolean;
+  /**
+   * Whether Gemini Vertex AI mode is enabled.
+   * When true, Gemini provider is disabled (uses ADC instead of API key).
+   */
+  geminiVertexAiEnabled?: boolean;
 }
 
 /**
@@ -139,6 +195,7 @@ export function ChatApiKeyForm({
   existingKeys,
   form,
   isPending = false,
+  geminiVertexAiEnabled = false,
 }: ChatApiKeyFormProps) {
   const byosEnabled = useFeatureFlag("byosEnabled");
   const isEditMode = Boolean(existingKey);
@@ -301,25 +358,37 @@ export function ChatApiKeyForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {Object.entries(PROVIDER_CONFIG).map(([key, config]) => (
-                <SelectItem key={key} value={key} disabled={!config.enabled}>
-                  <div className="flex items-center gap-2">
-                    <Image
-                      src={config.icon}
-                      alt={config.name}
-                      width={16}
-                      height={16}
-                      className="rounded dark:invert"
-                    />
-                    <span>{config.name}</span>
-                    {!config.enabled && (
-                      <Badge variant="outline" className="ml-2 text-xs">
-                        Coming Soon
-                      </Badge>
-                    )}
-                  </div>
-                </SelectItem>
-              ))}
+              {Object.entries(PROVIDER_CONFIG).map(([key, config]) => {
+                const isGeminiDisabledByVertexAi =
+                  key === "gemini" && geminiVertexAiEnabled;
+                const isDisabled =
+                  !config.enabled || isGeminiDisabledByVertexAi;
+
+                return (
+                  <SelectItem key={key} value={key} disabled={isDisabled}>
+                    <div className="flex items-center gap-2">
+                      <Image
+                        src={config.icon}
+                        alt={config.name}
+                        width={16}
+                        height={16}
+                        className="rounded dark:invert"
+                      />
+                      <span>{config.name}</span>
+                      {!config.enabled && (
+                        <Badge variant="outline" className="ml-2 text-xs">
+                          Coming Soon
+                        </Badge>
+                      )}
+                      {isGeminiDisabledByVertexAi && (
+                        <Badge variant="secondary" className="ml-2 text-xs">
+                          Vertex AI
+                        </Badge>
+                      )}
+                    </div>
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
         </div>
@@ -429,6 +498,11 @@ export function ChatApiKeyForm({
                 </span>
               )}
             </Label>
+            {providerConfig.description && (
+              <p className="text-xs text-muted-foreground">
+                {providerConfig.description}
+              </p>
+            )}
             <div className="relative">
               <Input
                 id="chat-api-key-value"

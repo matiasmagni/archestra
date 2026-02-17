@@ -1,6 +1,6 @@
 import { archestraApiSdk } from "@shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { handleApiError } from "./utils";
 
 const { getTokens, getTokenValue, rotateToken } = archestraApiSdk;
 
@@ -39,14 +39,21 @@ export interface TokensListResponse {
 }
 
 /**
- * Hook to fetch all tokens for the organization
+ * Hook to fetch tokens for the organization
  * Returns both tokens and permission flags
+ *
+ * When profileId is provided, team tokens are filtered to only include
+ * tokens for teams that the profile is also assigned to.
  */
-export function useTokens() {
+export function useTokens(params?: { profileId?: string }) {
+  const { profileId } = params ?? {};
   return useQuery({
-    queryKey: ["tokens"],
+    queryKey: ["tokens", { profileId }],
     queryFn: async () => {
-      const response = await getTokens();
+      const response = await getTokens({ query: { profileId } });
+      if (response.error) {
+        handleApiError(response.error);
+      }
       const data = response.data as TokensListResponse | undefined;
       return {
         tokens: data?.tokens ?? [],
@@ -75,6 +82,23 @@ export function useTokenValue(tokenId: string | undefined) {
 }
 
 /**
+ * Mutation hook to fetch team token value on demand
+ * Use this in components that need to fetch the token on button click
+ */
+export function useFetchTeamTokenValue() {
+  return useMutation({
+    mutationFn: async (tokenId: string) => {
+      const { data, error } = await getTokenValue({ path: { tokenId } });
+      if (error) {
+        handleApiError(error);
+        return null;
+      }
+      return data as { value: string };
+    },
+  });
+}
+
+/**
  * Hook to rotate a token
  */
 export function useRotateToken() {
@@ -82,14 +106,14 @@ export function useRotateToken() {
   return useMutation({
     mutationFn: async (tokenId: string) => {
       const response = await rotateToken({ path: { tokenId } });
+      if (response.error) {
+        handleApiError(response.error);
+      }
       return response.data as { value: string };
     },
     onSuccess: (_data, tokenId) => {
       queryClient.invalidateQueries({ queryKey: ["tokens"] });
       queryClient.invalidateQueries({ queryKey: ["tokenValue", tokenId] });
-    },
-    onError: () => {
-      toast.error("Failed to rotate token");
     },
   });
 }

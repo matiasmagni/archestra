@@ -1,40 +1,23 @@
 "use client";
 
-import {
-  CategoryScale,
-  Chart as ChartJS,
-  Filler,
-  Legend,
-  LinearScale,
-  LineElement,
-  PointElement,
-  Title,
-  Tooltip,
-  type TooltipItem,
-} from "chart.js";
+import { type StatisticsTimeFrame, StatisticsTimeFrameSchema } from "@shared";
 import { format } from "date-fns";
 import { Calendar as CalendarIcon, Clock, Info } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Line } from "react-chartjs-2";
 import type { DateRange } from "react-day-picker";
-
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler,
-);
-
-import type { archestraApiTypes } from "@shared";
-import { type StatisticsTimeFrame, StatisticsTimeFrameSchema } from "@shared";
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  type ChartConfig,
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart";
 import {
   Dialog,
   DialogContent,
@@ -67,80 +50,54 @@ import {
   useTeamStatistics,
 } from "@/lib/statistics.query";
 
-// Type aliases for better readability
-type TeamStatisticsData =
-  archestraApiTypes.GetTeamStatisticsResponses["200"][number];
-type ProfileStatisticsData =
-  archestraApiTypes.GetAgentStatisticsResponses["200"][number];
-type ModelStatisticsData =
-  archestraApiTypes.GetModelStatisticsResponses["200"][number];
-type StatisticsData =
-  | TeamStatisticsData
-  | ProfileStatisticsData
-  | ModelStatisticsData;
+/**
+ * Reusable tooltip component for cost charts.
+ * Shows a color dot indicator and formatted cost value for each data series.
+ */
+const CostChartTooltip = (
+  <ChartTooltipContent
+    indicator="dot"
+    formatter={(value, _name, item) => (
+      <>
+        <div
+          className="shrink-0 rounded-[2px] h-2.5 w-2.5"
+          style={{
+            backgroundColor: item.color || item.fill,
+          }}
+        />
+        <span className="text-foreground font-mono font-medium tabular-nums">
+          ${Number(value).toFixed(2)}
+        </span>
+      </>
+    )}
+  />
+);
 
-// Type guards
-function isTeamStatistics(data: StatisticsData): data is TeamStatisticsData {
-  return "teamName" in data;
+interface ChartContainerWrapperProps {
+  config: ChartConfig;
+  data: Record<string, string | number>[];
+  emptyMessage?: string;
+  children: React.ReactNode;
 }
 
-function isProfileStatistics(
-  data: StatisticsData,
-): data is ProfileStatisticsData {
-  return "agentName" in data;
-}
+const ChartContainerWrapper = ({
+  config,
+  data,
+  emptyMessage = "No data available",
+  children,
+}: ChartContainerWrapperProps) => (
+  <ChartContainer config={config} className="aspect-auto h-80 w-full relative">
+    {data.length > 0 ? (
+      children
+    ) : (
+      <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+        {emptyMessage}
+      </div>
+    )}
+  </ChartContainer>
+);
 
-function isModelStatistics(data: StatisticsData): data is ModelStatisticsData {
-  return "model" in data && "percentage" in data;
-}
-
-const colors = [
-  "#3b82f6", // blue
-  "#10b981", // green
-  "#f59e0b", // amber
-  "#ef4444", // red
-  "#8b5cf6", // violet
-];
-
-type ChartInstance = {
-  data: {
-    datasets: unknown[];
-  };
-  isDatasetVisible: (index: number) => boolean;
-};
-
-type ChartEventArgs = {
-  event: {
-    type: string;
-  };
-};
-
-function createVisibilitySyncPlugin<T>(
-  id: string,
-  data: T[],
-  getKey: (item: T) => string,
-  setHidden: React.Dispatch<React.SetStateAction<Set<string>>>,
-) {
-  return {
-    id,
-    afterEvent: (chart: ChartInstance, args: ChartEventArgs) => {
-      if (args.event.type === "click") {
-        setTimeout(() => {
-          const newHidden = new Set<string>();
-          chart.data.datasets.forEach((_, index: number) => {
-            if (!chart.isDatasetVisible(index)) {
-              const item = data[index];
-              if (item) {
-                newHidden.add(getKey(item));
-              }
-            }
-          });
-          setHidden(newHidden);
-        }, 10);
-      }
-    },
-  };
-}
+const TIMEFRAME_STORAGE_KEY = "cost-statistics-timeframe";
 
 export default function StatisticsPage() {
   const router = useRouter();
@@ -151,11 +108,6 @@ export default function StatisticsPage() {
   const [fromTime, setFromTime] = useState("00:00");
   const [toTime, setToTime] = useState("23:59");
   const [isCustomDialogOpen, setIsCustomDialogOpen] = useState(false);
-
-  // Track hidden items for each category
-  const [hiddenTeams, setHiddenTeams] = useState<Set<string>>(new Set());
-  const [hiddenProfiles, setHiddenProfiles] = useState<Set<string>>(new Set());
-  const [hiddenModels, setHiddenModels] = useState<Set<string>>(new Set());
 
   // Statistics data fetching hooks
   const currentTimeframe = timeframe.startsWith("custom:") ? "all" : timeframe;
@@ -173,13 +125,15 @@ export default function StatisticsPage() {
   });
 
   /**
-   * Initialize from URL parameters
-   *
-   * NOTE: may need to do validation here.. could use StatisticsTimeFrameSchema
+   * Initialize from URL parameters or localStorage
    */
   useEffect(() => {
+    const urlTimeframe = searchParams.get("timeframe");
+    const storedTimeframe = localStorage.getItem(TIMEFRAME_STORAGE_KEY);
+
+    // URL params take precedence, then localStorage, then default
     const { success, data } = StatisticsTimeFrameSchema.safeParse(
-      searchParams.get("timeframe"),
+      urlTimeframe ?? storedTimeframe,
     );
     if (success) {
       setTimeframe(data);
@@ -205,6 +159,7 @@ export default function StatisticsPage() {
   const handleTimeframeChange = useCallback(
     (tf: StatisticsTimeFrame) => {
       setTimeframe(tf);
+      localStorage.setItem(TIMEFRAME_STORAGE_KEY, tf);
       updateURL(tf);
     },
     [updateURL],
@@ -218,11 +173,9 @@ export default function StatisticsPage() {
     const fromDateTime = new Date(dateRange.from);
     const toDateTime = new Date(dateRange.to);
 
-    // Set time for from date
     const [fromHours, fromMinutes] = fromTime.split(":").map(Number);
     fromDateTime.setHours(fromHours, fromMinutes, 0, 0);
 
-    // Set time for to date
     const [toHours, toMinutes] = toTime.split(":").map(Number);
     toDateTime.setHours(toHours, toMinutes, 59, 999);
 
@@ -239,7 +192,6 @@ export default function StatisticsPage() {
       const fromDateTime = new Date(fromDate);
       const toDateTime = new Date(toDate);
 
-      // Check if times are different from default (00:00 to 23:59)
       const hasCustomTime =
         fromDateTime.getHours() !== 0 ||
         fromDateTime.getMinutes() !== 0 ||
@@ -272,442 +224,235 @@ export default function StatisticsPage() {
     }
   }, []);
 
-  // Helper function to convert statistics to chart format
-  const convertStatsToChartData = useCallback(
-    <T extends StatisticsData>(
-      statistics: T[],
-      labelKey:
-        | keyof Pick<TeamStatisticsData, "teamName">
-        | keyof Pick<ProfileStatisticsData, "agentName">
-        | keyof Pick<ModelStatisticsData, "model">,
-      colors: string[],
-      hiddenIds: Set<string>,
-      getKey: (stat: T) => string,
-    ) => {
-      // Get unique time points across all datasets
-      const allTimestamps = [
-        ...new Set(
-          statistics.flatMap((stat) =>
-            stat.timeSeries.map((point) => point.timestamp),
-          ),
-        ),
-      ].sort();
-
-      const datasets = statistics.slice(0, 5).map((stat, index) => {
-        // Limit to top 5 for readability
-        const data = allTimestamps.map((timestamp) => {
-          const point = stat.timeSeries.find((p) => p.timestamp === timestamp);
-          return point ? point.value : 0;
-        });
-
-        let label: string;
-        if (labelKey === "teamName" && isTeamStatistics(stat)) {
-          label = stat.teamName;
-        } else if (labelKey === "agentName" && isProfileStatistics(stat)) {
-          label = stat.agentName;
-        } else if (labelKey === "model" && isModelStatistics(stat)) {
-          label = stat.model;
-        } else {
-          label = "Unknown";
-        }
-
-        return {
-          label,
-          data,
-          borderColor: colors[index % colors.length],
-          backgroundColor: colors[index % colors.length]
-            .replace(")", ", 0.1)")
-            .replace("rgb", "rgba"),
-          borderWidth: 3,
-          fill: false,
-          tension: 0.4,
-          pointBackgroundColor: colors[index % colors.length],
-          pointBorderColor: "#ffffff",
-          pointBorderWidth: 2,
-          pointRadius: 5,
-          pointHoverRadius: 8,
-          hidden: hiddenIds.has(getKey(stat)),
-        };
-      });
-
-      // Format timestamps for display
-      const labels = allTimestamps.map((timestamp) => {
-        const date = new Date(timestamp);
-        if (timeframe === "1h") {
-          return format(date, "HH:mm");
-        } else if (timeframe === "24h") {
-          return format(date, "HH:mm");
-        } else if (timeframe === "7d" || timeframe === "30d") {
-          return format(date, "MMM d");
-        } else {
-          return format(date, "MMM d");
-        }
-      });
-
-      return { labels, datasets };
+  // Format timestamp for display based on timeframe
+  const formatTimestamp = useCallback(
+    (timestamp: string) => {
+      const date = new Date(timestamp);
+      if (timeframe === "1h" || timeframe === "24h") {
+        return format(date, "HH:mm");
+      }
+      return format(date, "MMM d");
     },
     [timeframe],
   );
 
-  // Filter statistics based on hidden items (for table only)
-  const visibleTeamStatistics = teamStatistics.filter(
-    (team) => !hiddenTeams.has(team.teamId),
-  );
-  const visibleProfileStatistics = agentStatistics.filter(
-    (agent) => !hiddenProfiles.has(agent.agentId),
-  );
-  const visibleModelStatistics = modelStatistics.filter(
-    (model) => !hiddenModels.has(model.model),
-  );
+  // Convert team statistics to recharts format
+  const teamChartData = useMemo(() => {
+    if (teamStatistics.length === 0) return [];
 
-  // Chart.js data configuration - use ALL statistics, let Chart.js handle visibility
-  const teamChartData =
-    teamStatistics.length > 0
-      ? convertStatsToChartData<TeamStatisticsData>(
-          teamStatistics,
-          "teamName",
-          colors,
-          hiddenTeams,
-          (stat) => stat.teamId,
-        )
-      : {
-          labels: ["No Data"],
-          datasets: [
-            {
-              label: "No teams found",
-              data: [0],
-              borderColor: "#9ca3af",
-              backgroundColor: "rgba(156, 163, 175, 0.1)",
-              borderWidth: 3,
-              fill: false,
-              tension: 0.4,
-            },
-          ],
-        };
-
-  const agentChartData =
-    agentStatistics.length > 0
-      ? convertStatsToChartData<ProfileStatisticsData>(
-          agentStatistics,
-          "agentName",
-          colors,
-          hiddenProfiles,
-          (stat) => stat.agentId,
-        )
-      : {
-          labels: ["No Data"],
-          datasets: [
-            {
-              label: "No profiles found",
-              data: [0],
-              borderColor: "#9ca3af",
-              backgroundColor: "rgba(156, 163, 175, 0.1)",
-              borderWidth: 3,
-              fill: false,
-              tension: 0.4,
-            },
-          ],
-        };
-
-  const modelChartData =
-    modelStatistics.length > 0
-      ? convertStatsToChartData<ModelStatisticsData>(
-          modelStatistics,
-          "model",
-          colors,
-          hiddenModels,
-          (stat) => stat.model,
-        )
-      : {
-          labels: ["No Data"],
-          datasets: [
-            {
-              label: "No models found",
-              data: [0],
-              borderColor: "#9ca3af",
-              backgroundColor: "rgba(156, 163, 175, 0.1)",
-              borderWidth: 3,
-              fill: false,
-              tension: 0.4,
-            },
-          ],
-        };
-
-  // Chart keys to force remount when data changes
-  const teamChartKey = `team-${timeframe}-${teamStatistics.length}-${hiddenTeams.size}`;
-  const agentChartKey = `agent-${timeframe}-${agentStatistics.length}-${hiddenProfiles.size}`;
-  const modelChartKey = `model-${timeframe}-${modelStatistics.length}-${hiddenModels.size}`;
-
-  // Chart options with default legend behavior (strikethrough on click)
-  const chartOptions = useMemo(
-    () => ({
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          display: true,
-          position: "top" as const,
-          align: "end" as const,
-          labels: {
-            usePointStyle: true,
-            pointStyle: "circle",
-            padding: 20,
-            font: {
-              size: 12,
-              weight: "normal" as const,
-            },
-            color: "#64748b",
-          },
-        },
-        tooltip: {
-          backgroundColor: "#ffffff",
-          titleColor: "#1f2937",
-          bodyColor: "#374151",
-          borderColor: "#e5e7eb",
-          borderWidth: 1,
-          cornerRadius: 12,
-          padding: 16,
-          displayColors: true,
-          titleFont: {
-            size: 14,
-            weight: "bold" as const,
-          },
-          bodyFont: {
-            size: 13,
-            weight: "normal" as const,
-          },
-          boxShadow:
-            "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
-          callbacks: {
-            label: (context: TooltipItem<"line">) =>
-              `${context.dataset.label}: $${context.parsed.y?.toFixed(2) || "0"}`,
-            title: (context: TooltipItem<"line">[]) =>
-              `Time: ${context[0].label}`,
-          },
-        },
-      },
-      scales: {
-        x: {
-          grid: {
-            color: "rgba(148, 163, 184, 0.2)",
-            drawBorder: false,
-            lineWidth: 1,
-          },
-          ticks: {
-            color: "#64748b",
-            font: {
-              size: 12,
-              weight: "normal" as const,
-            },
-            padding: 10,
-          },
-          border: {
-            display: false,
-          },
-        },
-        y: {
-          grid: {
-            color: "rgba(148, 163, 184, 0.2)",
-            drawBorder: false,
-            lineWidth: 1,
-          },
-          ticks: {
-            color: "#64748b",
-            font: {
-              size: 12,
-              weight: "normal" as const,
-            },
-            padding: 10,
-            callback: (value: string | number) => `$${value}`,
-          },
-          border: {
-            display: false,
-          },
-          beginAtZero: true,
-        },
-      },
-      elements: {
-        point: {
-          hoverRadius: 8,
-        },
-      },
-      interaction: {
-        intersect: false,
-        mode: "index" as const,
-      },
-    }),
-    [],
-  );
-
-  // Custom plugins to sync legend visibility with table
-  const teamChartPlugin = useMemo(
-    () =>
-      createVisibilitySyncPlugin(
-        "teamVisibilitySync",
-        teamStatistics,
-        (team) => team.teamId,
-        setHiddenTeams,
+    const allTimestamps = [
+      ...new Set(
+        teamStatistics.flatMap((stat) =>
+          stat.timeSeries.map((point) => point.timestamp),
+        ),
       ),
-    [teamStatistics],
-  );
+    ].sort();
 
-  const agentChartPlugin = useMemo(
-    () =>
-      createVisibilitySyncPlugin(
-        "agentVisibilitySync",
-        agentStatistics,
-        (agent) => agent.agentId,
-        setHiddenProfiles,
-      ),
+    return allTimestamps.map((timestamp) => {
+      const dataPoint: Record<string, string | number> = {
+        timestamp,
+        label: formatTimestamp(timestamp),
+      };
+      teamStatistics.slice(0, 5).forEach((team) => {
+        const point = team.timeSeries.find((p) => p.timestamp === timestamp);
+        dataPoint[team.teamId] = point ? point.value : 0;
+      });
+      return dataPoint;
+    });
+  }, [teamStatistics, formatTimestamp]);
+
+  const teamChartConfig = useMemo(() => {
+    const config: ChartConfig = {};
+    teamStatistics.slice(0, 5).forEach((team, index) => {
+      config[team.teamId] = {
+        label: team.teamName,
+        color: `var(--chart-${index + 1})`,
+      };
+    });
+    return config;
+  }, [teamStatistics]);
+
+  // Filter agent statistics by type
+  const chatAgentStatistics = useMemo(
+    () => agentStatistics.filter((stat) => stat.agentType === "agent"),
+    [agentStatistics],
+  );
+  const llmProxyStatistics = useMemo(
+    () => agentStatistics.filter((stat) => stat.agentType === "llm_proxy"),
     [agentStatistics],
   );
 
-  const modelChartPlugin = useMemo(
-    () =>
-      createVisibilitySyncPlugin(
-        "modelVisibilitySync",
-        modelStatistics,
-        (model) => model.model,
-        setHiddenModels,
+  // Convert agent statistics to recharts format
+  const agentChartData = useMemo(() => {
+    if (chatAgentStatistics.length === 0) return [];
+
+    const allTimestamps = [
+      ...new Set(
+        chatAgentStatistics.flatMap((stat) =>
+          stat.timeSeries.map((point) => point.timestamp),
+        ),
       ),
+    ].sort();
+
+    return allTimestamps.map((timestamp) => {
+      const dataPoint: Record<string, string | number> = {
+        timestamp,
+        label: formatTimestamp(timestamp),
+      };
+      chatAgentStatistics.slice(0, 5).forEach((agent) => {
+        const point = agent.timeSeries.find((p) => p.timestamp === timestamp);
+        dataPoint[agent.agentId] = point ? point.value : 0;
+      });
+      return dataPoint;
+    });
+  }, [chatAgentStatistics, formatTimestamp]);
+
+  const agentChartConfig = useMemo(() => {
+    const config: ChartConfig = {};
+    chatAgentStatistics.slice(0, 5).forEach((agent, index) => {
+      config[agent.agentId] = {
+        label: agent.agentName,
+        color: `var(--chart-${index + 1})`,
+      };
+    });
+    return config;
+  }, [chatAgentStatistics]);
+
+  // Convert LLM proxy statistics to recharts format
+  const llmProxyChartData = useMemo(() => {
+    if (llmProxyStatistics.length === 0) return [];
+
+    const allTimestamps = [
+      ...new Set(
+        llmProxyStatistics.flatMap((stat) =>
+          stat.timeSeries.map((point) => point.timestamp),
+        ),
+      ),
+    ].sort();
+
+    return allTimestamps.map((timestamp) => {
+      const dataPoint: Record<string, string | number> = {
+        timestamp,
+        label: formatTimestamp(timestamp),
+      };
+      llmProxyStatistics.slice(0, 5).forEach((agent) => {
+        const point = agent.timeSeries.find((p) => p.timestamp === timestamp);
+        dataPoint[agent.agentId] = point ? point.value : 0;
+      });
+      return dataPoint;
+    });
+  }, [llmProxyStatistics, formatTimestamp]);
+
+  const llmProxyChartConfig = useMemo(() => {
+    const config: ChartConfig = {};
+    llmProxyStatistics.slice(0, 5).forEach((agent, index) => {
+      config[agent.agentId] = {
+        label: agent.agentName,
+        color: `var(--chart-${index + 1})`,
+      };
+    });
+    return config;
+  }, [llmProxyStatistics]);
+
+  // Convert model statistics to recharts format
+  const modelChartData = useMemo(() => {
+    if (modelStatistics.length === 0) return [];
+
+    const allTimestamps = [
+      ...new Set(
+        modelStatistics.flatMap((stat) =>
+          stat.timeSeries.map((point) => point.timestamp),
+        ),
+      ),
+    ].sort();
+
+    return allTimestamps.map((timestamp) => {
+      const dataPoint: Record<string, string | number> = {
+        timestamp,
+        label: formatTimestamp(timestamp),
+      };
+      modelStatistics.slice(0, 5).forEach((model) => {
+        const point = model.timeSeries.find((p) => p.timestamp === timestamp);
+        dataPoint[model.model] = point ? point.value : 0;
+      });
+      return dataPoint;
+    });
+  }, [modelStatistics, formatTimestamp]);
+
+  const modelChartConfig = useMemo(() => {
+    const config: ChartConfig = {};
+    modelStatistics.slice(0, 5).forEach((model, index) => {
+      config[model.model] = {
+        label: model.model,
+        color: `var(--chart-${index + 1})`,
+      };
+    });
+    return config;
+  }, [modelStatistics]);
+
+  // Cost savings chart data
+  const costSavingsChartData = useMemo(() => {
+    if (!costSavingsData || costSavingsData.timeSeries.length === 0) return [];
+
+    return costSavingsData.timeSeries.map((point) => ({
+      timestamp: point.timestamp,
+      label: formatTimestamp(point.timestamp),
+      nonOptimized: point.baselineCost,
+      actual: point.actualCost,
+    }));
+  }, [costSavingsData, formatTimestamp]);
+
+  const costSavingsChartConfig: ChartConfig = {
+    nonOptimized: {
+      label: "Non-Optimized Cost",
+      color: "var(--chart-4)",
+    },
+    actual: {
+      label: "Actual Cost",
+      color: "var(--chart-2)",
+    },
+  };
+
+  // Savings breakdown chart data
+  const savingsBreakdownChartData = useMemo(() => {
+    if (!costSavingsData || costSavingsData.timeSeries.length === 0) return [];
+
+    return costSavingsData.timeSeries.map((point) => ({
+      timestamp: point.timestamp,
+      label: formatTimestamp(point.timestamp),
+      optimization: point.optimizationSavings,
+      compression: point.toonSavings,
+    }));
+  }, [costSavingsData, formatTimestamp]);
+
+  const savingsBreakdownChartConfig: ChartConfig = {
+    optimization: {
+      label: "Optimization Rules Savings",
+      color: "var(--chart-1)",
+    },
+    compression: {
+      label: "Tool Compression Savings",
+      color: "var(--chart-5)",
+    },
+  };
+
+  // Sort statistics by cost for table display
+  const sortedTeamStatistics = useMemo(
+    () => [...teamStatistics].sort((a, b) => b.cost - a.cost),
+    [teamStatistics],
+  );
+  const sortedChatAgentStatistics = useMemo(
+    () => [...chatAgentStatistics].sort((a, b) => b.cost - a.cost),
+    [chatAgentStatistics],
+  );
+  const sortedLlmProxyStatistics = useMemo(
+    () => [...llmProxyStatistics].sort((a, b) => b.cost - a.cost),
+    [llmProxyStatistics],
+  );
+  const sortedModelStatistics = useMemo(
+    () => [...modelStatistics].sort((a, b) => b.cost - a.cost),
     [modelStatistics],
   );
-
-  // Cost savings chart data (baseline vs actual)
-  const costSavingsChartData = useMemo(() => {
-    if (!costSavingsData || costSavingsData.timeSeries.length === 0) {
-      return {
-        labels: ["No Data"],
-        datasets: [
-          {
-            label: "No data available",
-            data: [0],
-            borderColor: "#9ca3af",
-            backgroundColor: "rgba(156, 163, 175, 0.1)",
-            borderWidth: 3,
-            fill: false,
-            tension: 0.4,
-          },
-        ],
-      };
-    }
-
-    const labels = costSavingsData.timeSeries.map((point) => {
-      const date = new Date(point.timestamp);
-      if (timeframe === "1h") {
-        return format(date, "HH:mm");
-      } else if (timeframe === "24h") {
-        return format(date, "HH:mm");
-      } else if (timeframe === "7d" || timeframe === "30d") {
-        return format(date, "MMM d");
-      } else {
-        return format(date, "MMM d");
-      }
-    });
-
-    return {
-      labels,
-      datasets: [
-        {
-          label: "Non-Optimized Cost",
-          data: costSavingsData.timeSeries.map((point) => point.baselineCost),
-          borderColor: "#ef4444", // red
-          backgroundColor: "rgba(239, 68, 68, 0.1)",
-          borderWidth: 3,
-          fill: false,
-          tension: 0.4,
-          pointBackgroundColor: "#ef4444",
-          pointBorderColor: "#ffffff",
-          pointBorderWidth: 2,
-          pointRadius: 5,
-          pointHoverRadius: 8,
-        },
-        {
-          label: "Actual Cost",
-          data: costSavingsData.timeSeries.map((point) => point.actualCost),
-          borderColor: "#10b981", // green
-          backgroundColor: "rgba(16, 185, 129, 0.1)",
-          borderWidth: 3,
-          fill: false,
-          tension: 0.4,
-          pointBackgroundColor: "#10b981",
-          pointBorderColor: "#ffffff",
-          pointBorderWidth: 2,
-          pointRadius: 5,
-          pointHoverRadius: 8,
-        },
-      ],
-    };
-  }, [costSavingsData, timeframe]);
-
-  // Savings breakdown chart data (optimization rules vs TOON)
-  const savingsBreakdownChartData = useMemo(() => {
-    if (!costSavingsData || costSavingsData.timeSeries.length === 0) {
-      return {
-        labels: ["No Data"],
-        datasets: [
-          {
-            label: "No data available",
-            data: [0],
-            borderColor: "#9ca3af",
-            backgroundColor: "rgba(156, 163, 175, 0.1)",
-            borderWidth: 3,
-            fill: false,
-            tension: 0.4,
-          },
-        ],
-      };
-    }
-
-    const labels = costSavingsData.timeSeries.map((point) => {
-      const date = new Date(point.timestamp);
-      if (timeframe === "1h") {
-        return format(date, "HH:mm");
-      } else if (timeframe === "24h") {
-        return format(date, "HH:mm");
-      } else if (timeframe === "7d" || timeframe === "30d") {
-        return format(date, "MMM d");
-      } else {
-        return format(date, "MMM d");
-      }
-    });
-
-    return {
-      labels,
-      datasets: [
-        {
-          label: "Optimization Rules Savings",
-          data: costSavingsData.timeSeries.map(
-            (point) => point.optimizationSavings,
-          ),
-          borderColor: "#3b82f6", // blue
-          backgroundColor: "rgba(59, 130, 246, 0.1)",
-          borderWidth: 3,
-          fill: false,
-          tension: 0.4,
-          pointBackgroundColor: "#3b82f6",
-          pointBorderColor: "#ffffff",
-          pointBorderWidth: 2,
-          pointRadius: 5,
-          pointHoverRadius: 8,
-        },
-        {
-          label: "Tool Compression Savings",
-          data: costSavingsData.timeSeries.map((point) => point.toonSavings),
-          borderColor: "#8b5cf6", // purple
-          backgroundColor: "rgba(139, 92, 246, 0.1)",
-          borderWidth: 3,
-          fill: false,
-          tension: 0.4,
-          pointBackgroundColor: "#8b5cf6",
-          pointBorderColor: "#ffffff",
-          pointBorderWidth: 2,
-          pointRadius: 5,
-          pointHoverRadius: 8,
-        },
-      ],
-    };
-  }, [costSavingsData, timeframe]);
 
   return (
     <div className="space-y-6">
@@ -851,31 +596,113 @@ export default function StatisticsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>Cost Savings</CardTitle>
+            <CardTitle>Costs</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-80">
-              <Line
-                key={`cost-savings-${timeframe}`}
+            <ChartContainerWrapper
+              config={costSavingsChartConfig}
+              data={costSavingsChartData}
+            >
+              <LineChart
+                accessibilityLayer
                 data={costSavingsChartData}
-                options={chartOptions}
-              />
-            </div>
+                margin={{ top: 12, left: 12, right: 12 }}
+              >
+                <CartesianGrid vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                />
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  tickFormatter={(value) => `$${value}`}
+                />
+                <ChartTooltip content={CostChartTooltip} />
+                <ChartLegend content={<ChartLegendContent />} />
+                <Line
+                  dataKey="nonOptimized"
+                  type="monotone"
+                  stroke="var(--color-nonOptimized)"
+                  strokeWidth={2}
+                  dot={{
+                    strokeWidth: 0,
+                    r: 3,
+                    fill: "var(--color-nonOptimized)",
+                  }}
+                  activeDot={{ strokeWidth: 0, r: 5 }}
+                />
+                <Line
+                  dataKey="actual"
+                  type="monotone"
+                  stroke="var(--color-actual)"
+                  strokeWidth={2}
+                  dot={{ strokeWidth: 0, r: 3, fill: "var(--color-actual)" }}
+                  activeDot={{ strokeWidth: 0, r: 5 }}
+                />
+              </LineChart>
+            </ChartContainerWrapper>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Savings Breakdown</CardTitle>
+            <CardTitle>Cost Savings</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-80">
-              <Line
-                key={`savings-breakdown-${timeframe}`}
+            <ChartContainerWrapper
+              config={savingsBreakdownChartConfig}
+              data={savingsBreakdownChartData}
+            >
+              <LineChart
+                accessibilityLayer
                 data={savingsBreakdownChartData}
-                options={chartOptions}
-              />
-            </div>
+                margin={{ top: 12, left: 12, right: 12 }}
+              >
+                <CartesianGrid vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                />
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  tickFormatter={(value) => `$${value}`}
+                />
+                <ChartTooltip content={CostChartTooltip} />
+                <ChartLegend content={<ChartLegendContent />} />
+                <Line
+                  dataKey="optimization"
+                  type="monotone"
+                  stroke="var(--color-optimization)"
+                  strokeWidth={2}
+                  dot={{
+                    strokeWidth: 0,
+                    r: 3,
+                    fill: "var(--color-optimization)",
+                  }}
+                  activeDot={{ strokeWidth: 0, r: 5 }}
+                />
+                <Line
+                  dataKey="compression"
+                  type="monotone"
+                  stroke="var(--color-compression)"
+                  strokeWidth={2}
+                  dot={{
+                    strokeWidth: 0,
+                    r: 3,
+                    fill: "var(--color-compression)",
+                  }}
+                  activeDot={{ strokeWidth: 0, r: 5 }}
+                />
+              </LineChart>
+            </ChartContainerWrapper>
           </CardContent>
         </Card>
       </div>
@@ -887,14 +714,53 @@ export default function StatisticsPage() {
         <CardContent>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div className="order-2 lg:order-1">
-              <div className="h-80">
-                <Line
-                  key={teamChartKey}
+              <ChartContainerWrapper
+                config={teamChartConfig}
+                data={teamChartData}
+                emptyMessage="No team data available"
+              >
+                <LineChart
+                  accessibilityLayer
                   data={teamChartData}
-                  options={chartOptions}
-                  plugins={[teamChartPlugin]}
-                />
-              </div>
+                  margin={{ top: 12, left: 12, right: 12 }}
+                >
+                  <CartesianGrid vertical={false} />
+                  <XAxis
+                    dataKey="label"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    tickFormatter={(value) => `$${value}`}
+                  />
+                  <ChartTooltip content={CostChartTooltip} />
+                  <ChartLegend content={<ChartLegendContent />} />
+                  {teamStatistics.slice(0, 5).map((team) => (
+                    <Line
+                      key={team.teamId}
+                      dataKey={team.teamId}
+                      type="monotone"
+                      stroke={`var(--color-${team.teamId})`}
+                      strokeWidth={2}
+                      dot={{
+                        strokeWidth: 0,
+                        r: 3,
+                        fill: `var(--color-${team.teamId})`,
+                      }}
+                      activeDot={{ strokeWidth: 0, r: 5 }}
+                    />
+                  ))}
+                </LineChart>
+              </ChartContainerWrapper>
+              {teamStatistics.length > 5 && (
+                <p className="text-xs text-muted-foreground text-center mt-2">
+                  Chart shows top 5 by cost
+                </p>
+              )}
             </div>
 
             <div className="order-1 lg:order-2">
@@ -910,7 +776,7 @@ export default function StatisticsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {visibleTeamStatistics.length === 0 ? (
+                  {sortedTeamStatistics.length === 0 ? (
                     <TableRow>
                       <TableCell
                         colSpan={6}
@@ -920,7 +786,7 @@ export default function StatisticsPage() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    visibleTeamStatistics.map((team) => (
+                    sortedTeamStatistics.map((team) => (
                       <TableRow key={team.teamId}>
                         <TableCell className="font-medium">
                           {team.teamName}
@@ -948,26 +814,65 @@ export default function StatisticsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Profiles</CardTitle>
+          <CardTitle>Agents</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div className="order-2 lg:order-1">
-              <div className="h-80">
-                <Line
-                  key={agentChartKey}
+              <ChartContainerWrapper
+                config={agentChartConfig}
+                data={agentChartData}
+                emptyMessage="No agent data available"
+              >
+                <LineChart
+                  accessibilityLayer
                   data={agentChartData}
-                  options={chartOptions}
-                  plugins={[agentChartPlugin]}
-                />
-              </div>
+                  margin={{ top: 12, left: 12, right: 12 }}
+                >
+                  <CartesianGrid vertical={false} />
+                  <XAxis
+                    dataKey="label"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    tickFormatter={(value) => `$${value}`}
+                  />
+                  <ChartTooltip content={CostChartTooltip} />
+                  <ChartLegend content={<ChartLegendContent />} />
+                  {chatAgentStatistics.slice(0, 5).map((agent) => (
+                    <Line
+                      key={agent.agentId}
+                      dataKey={agent.agentId}
+                      type="monotone"
+                      stroke={`var(--color-${agent.agentId})`}
+                      strokeWidth={2}
+                      dot={{
+                        strokeWidth: 0,
+                        r: 3,
+                        fill: `var(--color-${agent.agentId})`,
+                      }}
+                      activeDot={{ strokeWidth: 0, r: 5 }}
+                    />
+                  ))}
+                </LineChart>
+              </ChartContainerWrapper>
+              {chatAgentStatistics.length > 5 && (
+                <p className="text-xs text-muted-foreground text-center mt-2">
+                  Chart shows top 5 by cost
+                </p>
+              )}
             </div>
 
             <div className="order-1 lg:order-2">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Profile Name</TableHead>
+                    <TableHead>Name</TableHead>
                     <TableHead>Team</TableHead>
                     <TableHead>Requests</TableHead>
                     <TableHead>Tokens</TableHead>
@@ -975,32 +880,133 @@ export default function StatisticsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {visibleProfileStatistics.length === 0 ? (
+                  {sortedChatAgentStatistics.length === 0 ? (
                     <TableRow>
                       <TableCell
                         colSpan={5}
                         className="text-center py-8 text-muted-foreground"
                       >
-                        No profile data available for the selected timeframe
+                        No agent data available for the selected timeframe
                       </TableCell>
                     </TableRow>
                   ) : (
-                    visibleProfileStatistics.map((profile) => (
-                      <TableRow key={profile.agentId}>
+                    sortedChatAgentStatistics.map((agent) => (
+                      <TableRow key={agent.agentId}>
                         <TableCell className="font-medium">
-                          {profile.agentName}
+                          {agent.agentName}
                         </TableCell>
-                        <TableCell>{profile.teamName}</TableCell>
-                        <TableCell>
-                          {profile.requests.toLocaleString()}
-                        </TableCell>
+                        <TableCell>{agent.teamName}</TableCell>
+                        <TableCell>{agent.requests.toLocaleString()}</TableCell>
                         <TableCell>
                           {(
-                            profile.inputTokens + profile.outputTokens
+                            agent.inputTokens + agent.outputTokens
                           ).toLocaleString()}
                         </TableCell>
                         <TableCell className="text-right">
-                          ${profile.cost.toFixed(2)}
+                          ${agent.cost.toFixed(2)}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>LLM Proxies</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="order-2 lg:order-1">
+              <ChartContainerWrapper
+                config={llmProxyChartConfig}
+                data={llmProxyChartData}
+                emptyMessage="No LLM proxy data available"
+              >
+                <LineChart
+                  accessibilityLayer
+                  data={llmProxyChartData}
+                  margin={{ top: 12, left: 12, right: 12 }}
+                >
+                  <CartesianGrid vertical={false} />
+                  <XAxis
+                    dataKey="label"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    tickFormatter={(value) => `$${value}`}
+                  />
+                  <ChartTooltip content={CostChartTooltip} />
+                  <ChartLegend content={<ChartLegendContent />} />
+                  {llmProxyStatistics.slice(0, 5).map((proxy) => (
+                    <Line
+                      key={proxy.agentId}
+                      dataKey={proxy.agentId}
+                      type="monotone"
+                      stroke={`var(--color-${proxy.agentId})`}
+                      strokeWidth={2}
+                      dot={{
+                        strokeWidth: 0,
+                        r: 3,
+                        fill: `var(--color-${proxy.agentId})`,
+                      }}
+                      activeDot={{ strokeWidth: 0, r: 5 }}
+                    />
+                  ))}
+                </LineChart>
+              </ChartContainerWrapper>
+              {llmProxyStatistics.length > 5 && (
+                <p className="text-xs text-muted-foreground text-center mt-2">
+                  Chart shows top 5 by cost
+                </p>
+              )}
+            </div>
+
+            <div className="order-1 lg:order-2">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Team</TableHead>
+                    <TableHead>Requests</TableHead>
+                    <TableHead>Tokens</TableHead>
+                    <TableHead className="text-right">Cost</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sortedLlmProxyStatistics.length === 0 ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={5}
+                        className="text-center py-8 text-muted-foreground"
+                      >
+                        No LLM proxy data available for the selected timeframe
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    sortedLlmProxyStatistics.map((proxy) => (
+                      <TableRow key={proxy.agentId}>
+                        <TableCell className="font-medium">
+                          {proxy.agentName}
+                        </TableCell>
+                        <TableCell>{proxy.teamName}</TableCell>
+                        <TableCell>{proxy.requests.toLocaleString()}</TableCell>
+                        <TableCell>
+                          {(
+                            proxy.inputTokens + proxy.outputTokens
+                          ).toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          ${proxy.cost.toFixed(2)}
                         </TableCell>
                       </TableRow>
                     ))
@@ -1019,14 +1025,53 @@ export default function StatisticsPage() {
         <CardContent>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div className="order-2 lg:order-1">
-              <div className="h-80">
-                <Line
-                  key={modelChartKey}
+              <ChartContainerWrapper
+                config={modelChartConfig}
+                data={modelChartData}
+                emptyMessage="No model data available"
+              >
+                <LineChart
+                  accessibilityLayer
                   data={modelChartData}
-                  options={chartOptions}
-                  plugins={[modelChartPlugin]}
-                />
-              </div>
+                  margin={{ top: 12, left: 12, right: 12 }}
+                >
+                  <CartesianGrid vertical={false} />
+                  <XAxis
+                    dataKey="label"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    tickFormatter={(value) => `$${value}`}
+                  />
+                  <ChartTooltip content={CostChartTooltip} />
+                  <ChartLegend content={<ChartLegendContent />} />
+                  {modelStatistics.slice(0, 5).map((model) => (
+                    <Line
+                      key={model.model}
+                      dataKey={model.model}
+                      type="monotone"
+                      stroke={`var(--color-${model.model})`}
+                      strokeWidth={2}
+                      dot={{
+                        strokeWidth: 0,
+                        r: 3,
+                        fill: `var(--color-${model.model})`,
+                      }}
+                      activeDot={{ strokeWidth: 0, r: 5 }}
+                    />
+                  ))}
+                </LineChart>
+              </ChartContainerWrapper>
+              {modelStatistics.length > 5 && (
+                <p className="text-xs text-muted-foreground text-center mt-2">
+                  Chart shows top 5 by cost
+                </p>
+              )}
             </div>
 
             <div className="order-1 lg:order-2">
@@ -1041,7 +1086,7 @@ export default function StatisticsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {visibleModelStatistics.length === 0 ? (
+                  {sortedModelStatistics.length === 0 ? (
                     <TableRow>
                       <TableCell
                         colSpan={5}
@@ -1051,7 +1096,7 @@ export default function StatisticsPage() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    visibleModelStatistics.map((model) => (
+                    sortedModelStatistics.map((model) => (
                       <TableRow key={model.model}>
                         <TableCell className="font-medium">
                           {model.model}

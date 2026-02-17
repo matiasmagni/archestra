@@ -1,4 +1,5 @@
 import {
+  index,
   jsonb,
   pgTable,
   text,
@@ -29,14 +30,36 @@ const toolsTable = pgTable(
     mcpServerId: uuid("mcp_server_id").references(() => mcpServerTable.id, {
       onDelete: "set null",
     }),
+    // delegateToAgentId links delegation tools directly to their target agent
+    // When set, the tool is a delegation tool that forwards requests to the target agent
+    // Used by internal agents for agent-to-agent delegation
+    delegateToAgentId: uuid("delegate_to_agent_id").references(
+      () => agentsTable.id,
+      {
+        onDelete: "cascade",
+      },
+    ),
     name: text("name").notNull(),
     parameters: jsonb("parameters")
       .$type<ToolParametersContent>()
       .notNull()
       .default({}),
     description: text("description"),
+<<<<<<< HEAD
     /** MCP tool metadata (e.g. _meta.ui.resourceUri for MCP Apps). Preserved from server when syncing tools. */
     meta: jsonb("meta").$type<Record<string, unknown> | null>(),
+=======
+    policiesAutoConfiguredAt: timestamp("policies_auto_configured_at", {
+      mode: "date",
+    }),
+    policiesAutoConfiguringStartedAt: timestamp(
+      "policies_auto_configuring_started_at",
+      {
+        mode: "date",
+      },
+    ),
+    policiesAutoConfiguredReasoning: text("policies_auto_configured_reasoning"),
+>>>>>>> origin/main
     createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { mode: "date" })
       .notNull()
@@ -47,7 +70,15 @@ const toolsTable = pgTable(
     // Unique constraint ensures:
     // - For MCP tools: one tool per (catalogId, name) combination
     // - For proxy-sniffed tools: one tool per (agentId, name) combination
-    unique().on(table.catalogId, table.name, table.agentId),
+    // - For delegation tools: one tool per delegateToAgentId
+    unique().on(
+      table.catalogId,
+      table.name,
+      table.agentId,
+      table.delegateToAgentId,
+    ),
+    // Index for delegation tool lookups
+    index("tools_delegate_to_agent_id_idx").on(table.delegateToAgentId),
   ],
 );
 

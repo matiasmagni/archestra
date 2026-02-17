@@ -240,6 +240,7 @@ class StatisticsModel {
           requests: 0,
           inputTokens: 0,
           outputTokens: 0,
+          cost: 0,
         } as T);
       }
 
@@ -249,46 +250,17 @@ class StatisticsModel {
       existing.requests += Number(row.requests) || 0;
       existing.inputTokens += Number(row.inputTokens) || 0;
       existing.outputTokens += Number(row.outputTokens) || 0;
+      // Aggregate cost (for statistics that include stored cost from interactions)
+      if ("cost" in row && "cost" in existing) {
+        (existing as { cost: number }).cost +=
+          Number((row as { cost: number }).cost) || 0;
+      }
     }
 
     return Array.from(grouped.values()).sort(
       (a, b) =>
         new Date(a.timeBucket).getTime() - new Date(b.timeBucket).getTime(),
     );
-  }
-
-  /**
-   * Get average token prices for cost calculation
-   */
-  private static async getAverageTokenPrices(): Promise<{
-    avgInputPrice: number;
-    avgOutputPrice: number;
-  }> {
-    const result = await db
-      .select({
-        avgInputPrice: sql<number>`AVG(CAST(${schema.tokenPricesTable.pricePerMillionInput} AS DECIMAL))`,
-        avgOutputPrice: sql<number>`AVG(CAST(${schema.tokenPricesTable.pricePerMillionOutput} AS DECIMAL))`,
-      })
-      .from(schema.tokenPricesTable);
-
-    return {
-      avgInputPrice: result[0]?.avgInputPrice || 0,
-      avgOutputPrice: result[0]?.avgOutputPrice || 0,
-    };
-  }
-
-  /**
-   * Calculate cost from tokens
-   */
-  private static calculateCost(
-    inputTokens: number,
-    outputTokens: number,
-    avgInputPrice: number,
-    avgOutputPrice: number,
-  ): number {
-    const inputCost = (inputTokens * avgInputPrice) / 1000000;
-    const outputCost = (outputTokens * avgOutputPrice) / 1000000;
-    return inputCost + outputCost;
   }
 
   /**
@@ -301,8 +273,6 @@ class StatisticsModel {
   ): Promise<TeamStatistics[]> {
     const interval = StatisticsModel.getTimeframeInterval(timeframe);
     const timeBucket = StatisticsModel.getTimeBucket(timeframe);
-    const { avgInputPrice, avgOutputPrice } =
-      await StatisticsModel.getAverageTokenPrices();
 
     // Get accessible agent IDs for users that are not agent admins
     let accessibleAgentIds: string[] = [];
@@ -317,6 +287,7 @@ class StatisticsModel {
     }
 
     // Base query for team statistics
+    // Use stored cost from interactions instead of recalculating with average prices
     const query = db
       .select({
         teamId: schema.teamsTable.id,
@@ -325,6 +296,7 @@ class StatisticsModel {
         requests: sql<number>`CAST(COUNT(*) AS INTEGER)`,
         inputTokens: sql<number>`CAST(COALESCE(SUM(${schema.interactionsTable.inputTokens}), 0) AS INTEGER)`,
         outputTokens: sql<number>`CAST(COALESCE(SUM(${schema.interactionsTable.outputTokens}), 0) AS INTEGER)`,
+        cost: sql<number>`CAST(COALESCE(SUM(${schema.interactionsTable.cost}), 0) AS DOUBLE PRECISION)`,
       })
       .from(schema.interactionsTable)
       .innerJoin(
@@ -426,12 +398,8 @@ class StatisticsModel {
     const teamMap = new Map<string, TeamStatistics>();
 
     for (const row of timeSeriesData) {
-      const cost = StatisticsModel.calculateCost(
-        Number(row.inputTokens),
-        Number(row.outputTokens),
-        avgInputPrice,
-        avgOutputPrice,
-      );
+      // Use stored cost from interactions (already calculated per-model)
+      const cost = Number(row.cost) || 0;
 
       if (!teamMap.has(row.teamId)) {
         const memberCount =
@@ -478,8 +446,6 @@ class StatisticsModel {
   ): Promise<AgentStatistics[]> {
     const interval = StatisticsModel.getTimeframeInterval(timeframe);
     const timeBucket = StatisticsModel.getTimeBucket(timeframe);
-    const { avgInputPrice, avgOutputPrice } =
-      await StatisticsModel.getAverageTokenPrices();
 
     // Get accessible agent IDs for users that are non-agent admins
     let accessibleAgentIds: string[] = [];
@@ -493,15 +459,18 @@ class StatisticsModel {
       }
     }
 
+    // Use stored cost from interactions instead of recalculating with average prices
     const query = db
       .select({
         agentId: schema.agentsTable.id,
         agentName: schema.agentsTable.name,
+        agentType: schema.agentsTable.agentType,
         teamName: schema.teamsTable.name,
         timeBucket: sql<string>`DATE_TRUNC(${sql.raw(`'${timeBucket}'`)}, ${schema.interactionsTable.createdAt})`,
         requests: sql<number>`CAST(COUNT(*) AS INTEGER)`,
         inputTokens: sql<number>`CAST(COALESCE(SUM(${schema.interactionsTable.inputTokens}), 0) AS INTEGER)`,
         outputTokens: sql<number>`CAST(COALESCE(SUM(${schema.interactionsTable.outputTokens}), 0) AS INTEGER)`,
+        cost: sql<number>`CAST(COALESCE(SUM(${schema.interactionsTable.cost}), 0) AS DOUBLE PRECISION)`,
       })
       .from(schema.interactionsTable)
       .innerJoin(
@@ -549,6 +518,7 @@ class StatisticsModel {
       .groupBy(
         schema.agentsTable.id,
         schema.agentsTable.name,
+        schema.agentsTable.agentType,
         schema.teamsTable.name,
         sql`DATE_TRUNC(${sql.raw(`'${timeBucket}'`)}, ${schema.interactionsTable.createdAt})`,
       )
@@ -575,17 +545,14 @@ class StatisticsModel {
     const agentMap = new Map<string, AgentStatistics>();
 
     for (const row of timeSeriesData) {
-      const cost = StatisticsModel.calculateCost(
-        Number(row.inputTokens),
-        Number(row.outputTokens),
-        avgInputPrice,
-        avgOutputPrice,
-      );
+      // Use stored cost from interactions (already calculated per-model)
+      const cost = Number(row.cost) || 0;
 
       if (!agentMap.has(row.agentId)) {
         agentMap.set(row.agentId, {
           agentId: row.agentId,
           agentName: row.agentName,
+          agentType: row.agentType,
           teamName: row.teamName || "No Team",
           requests: 0,
           inputTokens: 0,
@@ -620,8 +587,6 @@ class StatisticsModel {
   ): Promise<ModelStatistics[]> {
     const interval = StatisticsModel.getTimeframeInterval(timeframe);
     const timeBucket = StatisticsModel.getTimeBucket(timeframe);
-    const { avgInputPrice, avgOutputPrice } =
-      await StatisticsModel.getAverageTokenPrices();
 
     // Get accessible agent IDs for users that are non-agent admins
     let accessibleAgentIds: string[] = [];
@@ -636,6 +601,7 @@ class StatisticsModel {
       }
     }
 
+    // Use stored cost from interactions instead of recalculating with average prices
     const query = db
       .select({
         model: schema.interactionsTable.model,
@@ -643,6 +609,7 @@ class StatisticsModel {
         requests: sql<number>`CAST(COUNT(*) AS INTEGER)`,
         inputTokens: sql<number>`CAST(COALESCE(SUM(${schema.interactionsTable.inputTokens}), 0) AS INTEGER)`,
         outputTokens: sql<number>`CAST(COALESCE(SUM(${schema.interactionsTable.outputTokens}), 0) AS INTEGER)`,
+        cost: sql<number>`CAST(COALESCE(SUM(${schema.interactionsTable.cost}), 0) AS DOUBLE PRECISION)`,
       })
       .from(schema.interactionsTable)
       .innerJoin(
@@ -701,12 +668,8 @@ class StatisticsModel {
     for (const row of timeSeriesData) {
       if (!row.model) continue;
 
-      const cost = StatisticsModel.calculateCost(
-        Number(row.inputTokens),
-        Number(row.outputTokens),
-        avgInputPrice,
-        avgOutputPrice,
-      );
+      // Use stored cost from interactions (already calculated per-model)
+      const cost = Number(row.cost) || 0;
 
       totalCost += cost;
 

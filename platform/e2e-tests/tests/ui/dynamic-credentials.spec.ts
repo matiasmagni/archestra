@@ -1,6 +1,6 @@
 import { archestraApiSdk } from "@shared";
 import { ADMIN_EMAIL, E2eTestId, EDITOR_EMAIL } from "../../consts";
-import { goToPage, test } from "../../fixtures";
+import { expect, goToPage, test } from "../../fixtures";
 import {
   addCustomSelfHostedCatalogItem,
   assignEngineeringTeamToDefaultProfileViaApi,
@@ -45,6 +45,8 @@ test("Verify tool calling using dynamic credentials", async ({
     { user: "Member", page: memberPage, team: "Marketing" },
   ] as const;
 
+  const CONNECT_BUTTON_TIMEOUT = 25_000;
+
   const install = async ({ page, user, team }: (typeof MATRIX_A)[number]) => {
     // Go to MCP Registry page
     await goToPage(page, "/mcp-catalog/registry");
@@ -53,7 +55,7 @@ test("Verify tool calling using dynamic credentials", async ({
     const btn = page.getByTestId(
       `${E2eTestId.ConnectCatalogItemButton}-${catalogItemName}`,
     );
-    await btn.waitFor({ state: "visible" });
+    await btn.waitFor({ state: "visible", timeout: CONNECT_BUTTON_TIMEOUT });
     await btn.click();
     // Fill ARCHESTRA_TEST environment variable to mark personal credential
     await page
@@ -61,11 +63,28 @@ test("Verify tool calling using dynamic credentials", async ({
       .fill(`${user}-personal-credential`);
     // Install using personal credential
     await clickButton({ page, options: { name: "Install" } });
-    // Wait for dialog to close and button to be visible again
+
+    // After adding a server, the install dialog opens automatically.
+    // Close it so the calling test can control when to open it.
+    // Wait for the assignments dialog to appear and then close it by pressing Escape.
+    await page
+      .getByRole("dialog")
+      .filter({ hasText: /Assignments/ })
+      .waitFor({ state: "visible", timeout: 10000 });
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(500);
+
+    // Wait for dialog to close and button to be visible and enabled again
     const connectButton = page.getByTestId(
       `${E2eTestId.ConnectCatalogItemButton}-${catalogItemName}`,
     );
-    await connectButton.waitFor({ state: "visible" });
+    await connectButton.waitFor({
+      state: "visible",
+      timeout: CONNECT_BUTTON_TIMEOUT,
+    });
+    await expect(connectButton).toBeEnabled({
+      timeout: CONNECT_BUTTON_TIMEOUT,
+    });
     await connectButton.click();
     // Fill ARCHESTRA_TEST environment variable to mark team credential
     await page
@@ -88,15 +107,13 @@ test("Verify tool calling using dynamic credentials", async ({
     page: adminPage,
     catalogItemName: CATALOG_ITEM_NAME,
   });
-  // Wait for dropdown option to be visible and stable before clicking
-  const resolveAtCallTimeOption = adminPage.getByRole("option", {
-    name: "Resolve at call time",
-  });
-  await resolveAtCallTimeOption.waitFor({ state: "visible" });
-  // Additional wait to ensure option is stable (not animating)
+  // Select "Resolve at call time" (dynamic credential) from dropdown
+  await adminPage.getByRole("option", { name: "Resolve at call time" }).click();
+  // Close the popover by pressing Escape
+  await adminPage.keyboard.press("Escape");
   await adminPage.waitForTimeout(200);
-  await resolveAtCallTimeOption.click();
-  await adminPage.getByText("Assign to 1 profile").click();
+  // Click Save button at the bottom of the McpAssignmentsDialog
+  await clickButton({ page: adminPage, options: { name: "Save" } });
   await adminPage.waitForLoadState("networkidle");
 
   /**

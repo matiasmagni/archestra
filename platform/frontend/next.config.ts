@@ -9,7 +9,6 @@ const nextConfig: NextConfig = {
   devIndicators: false,
   turbopack: {
     resolveAlias: {
-      "@shared/access-control.ee": "../shared/access-control.ee.ts",
       "@shared/access-control": "../shared/access-control.ts",
     },
   },
@@ -28,7 +27,11 @@ const nextConfig: NextConfig = {
   },
   async rewrites() {
     const backendUrl =
+<<<<<<< HEAD
       process.env.ARCHESTRA_API_BASE_URL || "http://127.0.0.1:9000";
+=======
+      process.env.ARCHESTRA_INTERNAL_API_BASE_URL || "http://localhost:9000";
+>>>>>>> origin/main
     return [
       {
         source: "/api/archestra-catalog/:path*",
@@ -45,7 +48,18 @@ const nextConfig: NextConfig = {
         source: "/v1/:path*",
         destination: `${backendUrl}/v1/:path*`,
       },
+<<<<<<< HEAD
       // /health is handled by app/health/route.ts so we can return 503 when backend is down
+=======
+      {
+        source: "/health",
+        destination: `${backendUrl}/health`,
+      },
+      {
+        source: "/ws",
+        destination: `${backendUrl}/ws`,
+      },
+>>>>>>> origin/main
     ];
   },
 };

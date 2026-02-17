@@ -1,9 +1,51 @@
-FROM node:24.11.1-alpine3.22 AS base
+# Build KinD and Docker CLI from source with Go 1.25.7 to fix CVE-2025-61726, CVE-2025-68121
+# Alpine 3.23 only has Go 1.25.6, so we use the official golang image for 1.25.7+
+# KinD v0.31.0 pre-built binaries use Go 1.25.5 which has the vulnerability
+# Alpine 3.23's docker-cli (29.1.3) is compiled with Go 1.25.6 (vulnerable to CVE-2025-68121)
+FROM golang:1.25.7-alpine AS go-builder
+ARG TARGETARCH
+RUN if [ "$TARGETARCH" != "amd64" ] && [ "$TARGETARCH" != "arm64" ]; then \
+        echo "ERROR: Unsupported architecture: $TARGETARCH. KinD is only available for amd64 and arm64."; \
+        exit 1; \
+    fi
+RUN apk add --no-cache git
+RUN git clone --depth 1 --branch v0.31.0 https://github.com/kubernetes-sigs/kind.git /kind && \
+    cd /kind && \
+    CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -o /kind-binary .
+RUN git clone --depth 1 --branch v29.1.3 https://github.com/docker/cli.git /docker-cli && \
+    cd /docker-cli && \
+    cp vendor.mod go.mod && cp vendor.sum go.sum && \
+    CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -mod=vendor \
+    -ldflags '-X github.com/docker/cli/cli/version.Version=29.1.3' \
+    -o /docker-binary ./cmd/docker
+
+FROM node:24-alpine3.23 AS base
 
 # Enable pnpm
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable
+
+# Patch CVE-2026-23745: tar <=7.5.2 has path traversal vulnerability
+# Patch CVE-2026-23950: tar <=7.5.3 has Improper Handling of Unicode Encoding
+# Patch CVE-2026-24842: tar <=7.5.6 has path traversal vulnerability
+# tar is bundled in pnpm's corepack distribution and needs to be patched
+# Patch ALL pnpm versions in corepack cache to ensure comprehensive fix
+RUN corepack prepare pnpm@10.29.3 --activate && \
+    TAR_SHA256="87355a4cb10e7e7cdb4326e3e3c89232eaf5266d0792b998a396ddf6c11502bb" && \
+    PNPM_TAR_PATHS=$(find /root/.cache/node/corepack -path "*/pnpm/*/dist/node_modules/tar" -type d 2>/dev/null) && \
+    [ -n "$PNPM_TAR_PATHS" ] || { echo "WARNING: No tar directories found to patch"; exit 0; } && \
+    for PNPM_TAR_PATH in $PNPM_TAR_PATHS; do \
+        echo "Patching tar in $PNPM_TAR_PATH" && \
+        TMP_DIR=$(mktemp -d) && \
+        wget -qO "$TMP_DIR/tar.tgz" https://registry.npmjs.org/tar/-/tar-7.5.7.tgz && \
+        echo "$TAR_SHA256  $TMP_DIR/tar.tgz" | sha256sum -c - || { echo "ERROR: checksum mismatch"; rm -rf "$TMP_DIR"; exit 1; } && \
+        tar -tzf "$TMP_DIR/tar.tgz" >/dev/null 2>&1 || { echo "ERROR: Downloaded tarball is corrupt"; rm -rf "$TMP_DIR"; exit 1; } && \
+        rm -rf "$PNPM_TAR_PATH"/* && \
+        tar -xzf "$TMP_DIR/tar.tgz" -C "$PNPM_TAR_PATH" --strip-components=1 && \
+        rm -rf "$TMP_DIR"; \
+    done && \
+    echo "Patched tar to 7.5.7 in all pnpm corepack caches"
 
 # Dependencies stage
 FROM base AS deps
@@ -69,18 +111,30 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
 ENV ARCHESTRA_VERSION=${VERSION}
-ENV ARCHESTRA_API_BASE_URL="http://localhost:9000"
+ENV ARCHESTRA_INTERNAL_API_BASE_URL="http://localhost:9000"
+ENV ARCHESTRA_API_BASE_URL=""
 ENV ARCHESTRA_ANALYTICS="enabled"
-ENV ARCHESTRA_ORCHESTRATOR_MCP_SERVER_BASE_IMAGE="europe-west1-docker.pkg.dev/friendly-path-465518-r6/archestra-public/mcp-server-base:0.0.3"
 ENV ARCHESTRA_ENTERPRISE_LICENSE_ACTIVATED="false"
 ENV ARCHESTRA_AUTH_DISABLE_BASIC_AUTH="false"
 ENV ARCHESTRA_AUTH_DISABLE_INVITATIONS="false"
 ENV ARCHESTRA_SENTRY_FRONTEND_DSN=""
 ENV ARCHESTRA_SENTRY_ENVIRONMENT=""
 
+# Cloud database CA bundle for SSL certificate validation
+# This allows sslmode=require to work with AWS RDS and Google Cloud SQL
+ENV NODE_EXTRA_CA_CERTS="/etc/ssl/certs/cloud-database-ca-bundle.pem"
+
 RUN apk --no-cache upgrade && \
     # Install PostgreSQL 17, supervisord, and wget (needed for KinD download and health checks)
     apk add --no-cache postgresql17 postgresql17-contrib su-exec wget && \
+    # Download cloud database CA bundles for SSL certificate validation
+    # AWS RDS global CA bundle
+    wget -qO /tmp/aws-rds-ca.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem && \
+    # Google Cloud SQL global CA bundle
+    wget -qO /tmp/gcloud-sql-ca.pem https://storage.googleapis.com/cloudsql-ca-bundles/global.pem && \
+    # Combine all CA bundles
+    cat /tmp/aws-rds-ca.pem /tmp/gcloud-sql-ca.pem > /etc/ssl/certs/cloud-database-ca-bundle.pem && \
+    rm -f /tmp/aws-rds-ca.pem /tmp/gcloud-sql-ca.pem && \
     # Remove NPM-related files and directories (as we do not use npm and it just brings extra dependencies/vulnerabilities)
     # See https://github.com/grafana/grafana-image-renderer/pull/625
     rm -rf /usr/local/lib/node_modules/npm && \
@@ -93,24 +147,38 @@ RUN apk --no-cache upgrade && \
     rm -rf /tmp/*
 
 # Install KinD (Kubernetes in Docker) and docker-cli for embedded K8s cluster support
-RUN apk add --no-cache docker-cli && \
-    ARCH=$(uname -m) && \
-    if [ "$ARCH" = "x86_64" ]; then \
-        KIND_URL="https://kind.sigs.k8s.io/dl/v0.31.0/kind-linux-amd64"; \
-        KIND_SHA256="eb244cbafcc157dff60cf68693c14c9a75c4e6e6fedaf9cd71c58117cb93e3fa"; \
-    elif [ "$ARCH" = "aarch64" ]; then \
-        KIND_URL="https://kind.sigs.k8s.io/dl/v0.31.0/kind-linux-arm64"; \
-        KIND_SHA256="8e1014e87c34901cc422a1445866835d1e666f2a61301c27e722bdeab5a1f7e4"; \
-    else \
-        echo "ERROR: Unsupported architecture: $ARCH. KinD is only available for x86_64 and aarch64."; \
-        exit 1; \
-    fi && \
-    wget -O /usr/local/bin/kind "${KIND_URL}" && \
-    chmod +x /usr/local/bin/kind
+# Both binaries are built from source in go-builder with Go 1.25.7 to fix CVE-2025-68121
+COPY --from=go-builder /docker-binary /usr/local/bin/docker
+COPY --from=go-builder /kind-binary /usr/local/bin/kind
+RUN chmod +x /usr/local/bin/kind /usr/local/bin/docker
+# TODO: Once KinD releases a version compiled with Go >= 1.25.7, remove the kind-builder stage
+# at the top of this file and restore the pre-built binary download below for faster builds.
+# Track releases at: https://github.com/kubernetes-sigs/kind/releases
+# RUN ARCH=$(uname -m) && \
+#     if [ "$ARCH" = "x86_64" ]; then \
+#         KIND_URL="https://kind.sigs.k8s.io/dl/v0.31.0/kind-linux-amd64"; \
+#         KIND_SHA256="eb244cbafcc157dff60cf68693c14c9a75c4e6e6fedaf9cd71c58117cb93e3fa"; \
+#     elif [ "$ARCH" = "aarch64" ]; then \
+#         KIND_URL="https://kind.sigs.k8s.io/dl/v0.31.0/kind-linux-arm64"; \
+#         KIND_SHA256="8e1014e87c34901cc422a1445866835d1e666f2a61301c27e722bdeab5a1f7e4"; \
+#     else \
+#         echo "ERROR: Unsupported architecture: $ARCH. KinD is only available for x86_64 and aarch64."; \
+#         exit 1; \
+#     fi && \
+#     wget -O /usr/local/bin/kind "${KIND_URL}" && \
+#     echo "${KIND_SHA256}  /usr/local/bin/kind" | sha256sum -c - && \
+#     chmod +x /usr/local/bin/kind
 
 # Install supervisor from edge repository to address CVE-2023-27482
 # https://nvd.nist.gov/vuln/detail/cve-2023-27482
-RUN apk add --no-cache supervisor=4.3.0-r0 --repository=http://dl-cdn.alpinelinux.org/alpine/edge/main
+RUN apk add --no-cache supervisor=4.3.0-r0 --repository=http://dl-cdn.alpinelinux.org/alpine/edge/main && \
+    # CVE-2026-24049: Path Traversal vulnerability in wheel <= 0.46.1
+    # Supervisor brings in Python/wheel as dependencies, upgrade wheel to fix CVE
+    # Install py3-pip (required for pip command) and upgrade wheel
+    apk add --no-cache py3-pip && \
+    pip install --upgrade "wheel>=0.46.2" --break-system-packages && \
+    # Also remove vendored vulnerable wheel from setuptools (py3-setuptools bundles wheel 0.45.1)
+    rm -rf /usr/lib/python3.12/site-packages/setuptools/_vendor/wheel /usr/lib/python3.12/site-packages/setuptools/_vendor/wheel-*.dist-info
 
 # Create postgres directories (user already exists from postgresql package)
 RUN mkdir -p /var/lib/postgresql/data /run/postgresql && \
@@ -136,7 +204,17 @@ COPY --from=builder /app/backend/src/database/migrations ./backend/src/database/
 # Copy built frontend
 COPY --from=builder /app/frontend/public ./frontend/public
 COPY --from=builder /app/frontend/.next/standalone ./
+
+# Copy previous version's static assets first (from CI build context)
+# Content-hashed filenames ensure no conflicts between versions
+COPY prev-static-assets/ ./frontend/.next/static/
+
+# Copy current build's assets on top
 COPY --from=builder /app/frontend/.next/static ./frontend/.next/static
+
+# Keep a clean copy of ONLY this build's assets (not accumulated)
+# CI will extract from this path for the NEXT deployment
+COPY --from=builder /app/frontend/.next/static /static-assets-source/
 
 # Create base supervisord configuration (without postgres)
 #
@@ -185,7 +263,7 @@ priority=20
 # See: https://nextjs.org/docs/app/api-reference/config/next-config-js/output#automatically-copying-traced-files
 # NEXT_PUBLIC_* variables are mapped from ARCHESTRA_* ENV variables
 # All other environment variables (NODE_ENV, etc.) are inherited automatically
-environment=HOSTNAME="0.0.0.0",NEXT_PUBLIC_ARCHESTRA_API_BASE_URL="%(ENV_ARCHESTRA_API_BASE_URL)s",NEXT_PUBLIC_ARCHESTRA_ANALYTICS="%(ENV_ARCHESTRA_ANALYTICS)s",NEXT_PUBLIC_ARCHESTRA_ORCHESTRATOR_MCP_SERVER_BASE_IMAGE="%(ENV_ARCHESTRA_ORCHESTRATOR_MCP_SERVER_BASE_IMAGE)s",NEXT_PUBLIC_ARCHESTRA_SENTRY_FRONTEND_DSN="%(ENV_ARCHESTRA_SENTRY_FRONTEND_DSN)s",NEXT_PUBLIC_ARCHESTRA_SENTRY_ENVIRONMENT="%(ENV_ARCHESTRA_SENTRY_ENVIRONMENT)s",NEXT_PUBLIC_ARCHESTRA_ENTERPRISE_LICENSE_ACTIVATED="%(ENV_ARCHESTRA_ENTERPRISE_LICENSE_ACTIVATED)s",NEXT_PUBLIC_ARCHESTRA_AUTH_DISABLE_BASIC_AUTH="%(ENV_ARCHESTRA_AUTH_DISABLE_BASIC_AUTH)s",NEXT_PUBLIC_ARCHESTRA_AUTH_DISABLE_INVITATIONS="%(ENV_ARCHESTRA_AUTH_DISABLE_INVITATIONS)s"
+environment=HOSTNAME="0.0.0.0",NEXT_PUBLIC_ARCHESTRA_API_BASE_URL="%(ENV_ARCHESTRA_API_BASE_URL)s",NEXT_PUBLIC_ARCHESTRA_ANALYTICS="%(ENV_ARCHESTRA_ANALYTICS)s",NEXT_PUBLIC_ARCHESTRA_SENTRY_FRONTEND_DSN="%(ENV_ARCHESTRA_SENTRY_FRONTEND_DSN)s",NEXT_PUBLIC_ARCHESTRA_SENTRY_ENVIRONMENT="%(ENV_ARCHESTRA_SENTRY_ENVIRONMENT)s",NEXT_PUBLIC_ARCHESTRA_ENTERPRISE_LICENSE_ACTIVATED="%(ENV_ARCHESTRA_ENTERPRISE_LICENSE_ACTIVATED)s",NEXT_PUBLIC_ARCHESTRA_AUTH_DISABLE_BASIC_AUTH="%(ENV_ARCHESTRA_AUTH_DISABLE_BASIC_AUTH)s",NEXT_PUBLIC_ARCHESTRA_AUTH_DISABLE_INVITATIONS="%(ENV_ARCHESTRA_AUTH_DISABLE_INVITATIONS)s"
 EOF
 
 # Create postgres program configuration (to be conditionally included)
@@ -207,6 +285,39 @@ EOF
 RUN cat > /docker-entrypoint.sh <<'EOF'
 #!/bin/sh
 set -e
+
+# Track if we created a KinD cluster for cleanup
+KIND_CLUSTER=""
+# Track supervisord PID for cleanup
+SUPERVISOR_PID=""
+
+# Cleanup function for graceful shutdown
+# Usage: cleanup [exit_code]
+# If exit_code not provided, defaults to 0 (signal-triggered cleanup)
+cleanup() {
+    CLEANUP_EXIT_CODE="${1:-0}"
+
+    echo "Shutting down..."
+
+    # Stop supervisord gracefully before cleaning up KinD cluster
+    if [ -n "$SUPERVISOR_PID" ] && kill -0 "$SUPERVISOR_PID" 2>/dev/null; then
+        echo "Stopping services..."
+        kill -TERM "$SUPERVISOR_PID" 2>/dev/null || true
+        wait "$SUPERVISOR_PID" 2>/dev/null || true
+    fi
+
+    # Delete KinD cluster if we created one in quickstart mode
+    if [ -n "$KIND_CLUSTER" ]; then
+        echo "Deleting KinD cluster '${KIND_CLUSTER}'..."
+        if kind delete cluster --name "${KIND_CLUSTER}" 2>/dev/null; then
+            echo "KinD cluster deleted successfully"
+        else
+            echo "Warning: Failed to delete KinD cluster"
+        fi
+    fi
+
+    exit "$CLEANUP_EXIT_CODE"
+}
 
 # Generate and persist ARCHESTRA_AUTH_SECRET if not set
 if [ -z "$ARCHESTRA_AUTH_SECRET" ]; then
@@ -235,6 +346,7 @@ fi
 if [ "$ARCHESTRA_QUICKSTART" = "true" ]; then
     echo "ARCHESTRA_QUICKSTART=true detected"
     echo "Quickstart mode enabled - initializing embedded KinD cluster..."
+
     if [ ! -S /var/run/docker.sock ]; then
         echo "Quickstart mode is on but Docker socket is not mounted"
         echo "Add: -v /var/run/docker.sock:/var/run/docker.sock to your docker run command"
@@ -250,17 +362,66 @@ if [ "$ARCHESTRA_QUICKSTART" = "true" ]; then
     # Quickstart mode always uses embedded KinD cluster
     CLUSTER_NAME="archestra-mcp"
     KUBECONFIG_PATH="/app/data/.kubeconfig"
+    # Pin a known-good node image to avoid compatibility issues with newer K8s versions.
+    # Must match a version supported by the KinD binary version compiled in the builder stage.
+    # See: https://github.com/kubernetes-sigs/kind/releases/tag/v0.31.0
+    KIND_NODE_IMAGE="kindest/node:v1.34.3@sha256:08497ee19eace7b4b5348db5c6a1591d7752b164530a36f855cb0f2bdcbadd48"
 
     # Check if cluster already exists
     if kind get clusters 2>/dev/null | grep -q "^${CLUSTER_NAME}$"; then
         echo "KinD cluster '${CLUSTER_NAME}' already exists"
     else
         echo "Creating KinD cluster '${CLUSTER_NAME}'..."
-        if ! kind create cluster --name "${CLUSTER_NAME}" --wait 120s; then
-            echo "ERROR: Failed to create KinD cluster"
+        if ! kind create cluster --name "${CLUSTER_NAME}" --image "${KIND_NODE_IMAGE}" --wait 120s; then
+            echo ""
+            echo "=== KinD cluster creation failed ==="
+            echo ""
+
+            # Detect Docker environment
+            DOCKER_SERVER_OS=$(docker info --format '{{.OperatingSystem}}' 2>/dev/null || echo "unknown")
+            DOCKER_SERVER_PLATFORM=$(docker info --format '{{.OSType}}/{{.Architecture}}' 2>/dev/null || echo "unknown")
+            DOCKER_MEMORY_BYTES=$(docker info --format '{{.MemTotal}}' 2>/dev/null || echo "0")
+            DOCKER_MEMORY_GB=$(awk "BEGIN {printf \"%.1f\", ${DOCKER_MEMORY_BYTES:-0} / 1073741824}")
+
+            echo "Docker environment:"
+            echo "  Server OS: ${DOCKER_SERVER_OS}"
+            echo "  Platform:  ${DOCKER_SERVER_PLATFORM}"
+            echo "  Memory:    ${DOCKER_MEMORY_GB} GB"
+            echo ""
+
+            IS_DOCKER_DESKTOP=false
+            if echo "${DOCKER_SERVER_OS}" | grep -qi "docker desktop"; then
+                IS_DOCKER_DESKTOP=true
+            fi
+
+            echo "Troubleshooting steps:"
+            if [ "${IS_DOCKER_DESKTOP}" = "true" ]; then
+                echo "  1. Increase Docker Desktop memory to at least 4 GB"
+                echo "     (Settings > Resources > Memory)"
+                if echo "${DOCKER_SERVER_PLATFORM}" | grep -qi "amd64"; then
+                    echo "  2. Ensure Docker Desktop is using the WSL 2 backend"
+                    echo "     (Settings > General > Use the WSL 2 based engine)"
+                fi
+                echo "  3. Restart Docker Desktop and try again"
+                echo "  4. Ensure Docker has sufficient disk space"
+                echo "     Run: docker system prune -f"
+            else
+                echo "  1. Ensure Docker has at least 4 GB of memory available"
+                echo "  2. Ensure Docker has sufficient disk space"
+                echo "     Run: docker system prune -f"
+                echo "  3. Restart Docker and try again"
+            fi
+            echo ""
+            echo "NOTE: You do NOT need to enable Kubernetes in Docker Desktop settings."
+            echo "      Archestra uses KinD (Kubernetes in Docker) which manages its own cluster."
+            echo ""
+            echo "For help: https://github.com/archestra-ai/archestra/issues"
+
             exit 1
         fi
         echo "KinD cluster created successfully"
+        # Mark for cleanup on shutdown
+        KIND_CLUSTER="${CLUSTER_NAME}"
     fi
 
     # Export kubeconfig
@@ -327,6 +488,7 @@ if [ "$ARCHESTRA_QUICKSTART" = "true" ]; then
         # Export the kubeconfig path for supervisord to inherit, only if setup succeeded
         export ARCHESTRA_ORCHESTRATOR_KUBECONFIG="${KUBECONFIG_PATH}"
         export ARCHESTRA_ORCHESTRATOR_K8S_NAMESPACE="${ARCHESTRA_ORCHESTRATOR_K8S_NAMESPACE:-default}"
+        export ARCHESTRA_ORCHESTRATOR_K8S_NODE_HOST="${CONTROL_PLANE_IP}"
         echo "Kubernetes orchestrator configured with embedded KinD cluster"
     fi
 fi
@@ -378,18 +540,111 @@ EOSQL
     fi
 else
     echo "Using external PostgreSQL database"
-    # Extract credentials from DATABASE_URL if needed (postgresql://user:pass@host:port/db)
-    POSTGRES_USER=$(echo "$EFFECTIVE_DATABASE_URL" | sed -n 's|.*://\([^:]*\):.*|\1|p')
-    POSTGRES_PASSWORD=$(echo "$EFFECTIVE_DATABASE_URL" | sed -n 's|.*://[^:]*:\([^@]*\)@.*|\1|p')
-    POSTGRES_DB=$(echo "$EFFECTIVE_DATABASE_URL" | sed -n 's|.*/\([^?]*\).*|\1|p')
+    # Note: POSTGRES_USER/PASSWORD/DB extraction removed - not needed for external databases
+    # The application uses EFFECTIVE_DATABASE_URL directly
 fi
 
 # Update supervisord config with actual environment variables
-sed -i "s|DATABASE_URL=\"[^\"]*\"|DATABASE_URL=\"${EFFECTIVE_DATABASE_URL}\"|" /etc/supervisord.conf
+# Escape % as %% for supervisord (it uses % for string interpolation like %(ENV_VAR)s)
+# Then use awk to handle other special characters in DATABASE_URL (like |, &, \)
+ESCAPED_DATABASE_URL=$(echo "$EFFECTIVE_DATABASE_URL" | sed 's/%/%%/g')
+awk -v url="$ESCAPED_DATABASE_URL" '{gsub(/DATABASE_URL="[^"]*"/, "DATABASE_URL=\"" url "\""); print}' /etc/supervisord.conf > /etc/supervisord.conf.tmp && mv /etc/supervisord.conf.tmp /etc/supervisord.conf
 
 # Propagate analytics setting to frontend (enabled by default, set to "disabled" to opt-out)
 if [ -n "$ARCHESTRA_ANALYTICS" ]; then
   sed -i "s|environment=\(.*\)|environment=\1,NEXT_PUBLIC_ARCHESTRA_ANALYTICS=\"${ARCHESTRA_ANALYTICS}\"|g" /etc/supervisord.conf
+fi
+
+# Configure ngrok tunnel if auth token is provided
+# ngrok is downloaded at runtime (not baked into the image) to avoid shipping
+# its Go stdlib CVEs in the Docker image. It's only needed when tunneling is enabled.
+# Pin to specific version with SHA256 verification for reproducibility and security.
+if [ -n "$ARCHESTRA_NGROK_AUTH_TOKEN" ]; then
+    echo "ngrok auth token detected - downloading ngrok and enabling tunnel to port 3000"
+    NGROK_VERSION="3.36.1"
+    ARCH=$(uname -m)
+    if [ "$ARCH" = "x86_64" ]; then
+        NGROK_ARCH="amd64"
+        NGROK_SHA256="4fe9d21be38fe8d4360b692543a2cc7345fc291b54a82ea99e7d33e46cadb765"
+    elif [ "$ARCH" = "aarch64" ]; then
+        NGROK_ARCH="arm64"
+        NGROK_SHA256="d04cc4650896e4f324e624247669f7b0d45ba28a19535fc3615d11c7b726a97e"
+    else
+        echo "ERROR: Unsupported architecture for ngrok: $ARCH"
+        exit 1
+    fi
+    NGROK_URL="https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v${NGROK_VERSION}-linux-${NGROK_ARCH}.tgz"
+    if ! wget -qO /tmp/ngrok.tgz "${NGROK_URL}"; then
+        echo "ERROR: Failed to download ngrok from ${NGROK_URL}"
+        exit 1
+    fi
+    echo "${NGROK_SHA256}  /tmp/ngrok.tgz" | sha256sum -c - || { echo "ERROR: ngrok checksum mismatch"; rm -f /tmp/ngrok.tgz; exit 1; }
+    tar -xzf /tmp/ngrok.tgz -C /usr/local/bin && \
+        chmod +x /usr/local/bin/ngrok && \
+        rm -f /tmp/ngrok.tgz
+    echo "ngrok $(ngrok version) installed"
+    ngrok config add-authtoken "$ARCHESTRA_NGROK_AUTH_TOKEN"
+
+    # Build ngrok command with optional static domain
+    if [ -n "$ARCHESTRA_NGROK_DOMAIN" ]; then
+        NGROK_CMD="ngrok http 3000 --log=stdout --log-format=term --domain=${ARCHESTRA_NGROK_DOMAIN}"
+        echo "Using custom ngrok domain: ${ARCHESTRA_NGROK_DOMAIN}"
+    else
+        NGROK_CMD="ngrok http 3000 --log=stdout --log-format=term"
+    fi
+
+    # Append ngrok program to supervisord config
+    cat >> /etc/supervisord.conf <<NGROK_CONF
+
+[program:ngrok]
+command=/bin/sh -c "sleep 10 && ${NGROK_CMD}"
+autostart=true
+autorestart=true
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+priority=25
+NGROK_CONF
+
+    # If no explicit domain, detect the dynamically assigned ngrok domain
+    # after ngrok starts. Write it to a file so the backend can read it.
+    if [ -z "$ARCHESTRA_NGROK_DOMAIN" ]; then
+        cat > /app/detect-ngrok-domain.sh <<'DETECT_SCRIPT'
+#!/bin/sh
+# Poll ngrok API to discover the dynamically assigned tunnel URL
+for i in $(seq 1 30); do
+    NGROK_RESPONSE=$(wget -qO- http://localhost:4040/api/tunnels 2>/dev/null || true)
+    if [ -n "$NGROK_RESPONSE" ]; then
+        TUNNEL_URL=$(echo "$NGROK_RESPONSE" | sed -n 's/.*"public_url":"\([^"]*\)".*/\1/p' | head -1)
+        if [ -n "$TUNNEL_URL" ]; then
+            # Extract domain from URL (remove https:// prefix)
+            NGROK_DOMAIN=$(echo "$TUNNEL_URL" | sed 's|https://||')
+            echo "Detected ngrok domain: ${NGROK_DOMAIN}"
+            echo "$NGROK_DOMAIN" > /app/data/.ngrok_domain
+            exit 0
+        fi
+    fi
+    sleep 1
+done
+echo "Warning: Could not detect ngrok domain after 30 seconds"
+DETECT_SCRIPT
+        chmod +x /app/detect-ngrok-domain.sh
+
+        cat >> /etc/supervisord.conf <<DETECT_CONF
+
+[program:detect-ngrok-domain]
+command=/bin/sh -c "sleep 15 && /app/detect-ngrok-domain.sh"
+autostart=true
+autorestart=false
+startsecs=0
+priority=26
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+DETECT_CONF
+    fi
 fi
 
 # Add startup banner to supervisord (sleeps 12s to ensure it prints after Next.js logs)
@@ -407,8 +662,23 @@ stderr_logfile=/dev/stderr
 stderr_logfile_maxbytes=0
 CONF
 
-# Start supervisord
-exec /usr/bin/supervisord -c /etc/supervisord.conf
+# Set up signal handlers now that all initialization is complete
+trap cleanup SIGTERM SIGINT
+
+# Start supervisord in foreground but allow signal handling
+# Run in background and wait so trap can catch signals
+/usr/bin/supervisord -c /etc/supervisord.conf &
+SUPERVISOR_PID=$!
+
+# Wait for supervisord to exit (or for a signal)
+wait "$SUPERVISOR_PID"
+# Note: if supervisord is terminated by a signal, `wait` returns 128 + signal.
+# We intentionally propagate this composite exit code to `cleanup` for diagnostics.
+EXIT_CODE=$?
+
+# If we get here, supervisord exited on its own or was terminated by a signal.
+# Run cleanup with the raw exit code from `wait` (may be 128 + signal on signals).
+cleanup "$EXIT_CODE"
 EOF
 
 RUN chmod +x /docker-entrypoint.sh

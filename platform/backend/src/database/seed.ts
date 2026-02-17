@@ -1,23 +1,33 @@
 import {
   ADMIN_ROLE_NAME,
+  ARCHESTRA_MCP_CATALOG_ID,
+  PLAYWRIGHT_MCP_CATALOG_ID,
+  PLAYWRIGHT_MCP_SERVER_NAME,
   type PredefinedRoleName,
+  type SupportedProvider,
   testMcpServerCommand,
 } from "@shared";
+import { and, eq, inArray } from "drizzle-orm";
 import { auth } from "@/auth/better-auth";
+import config from "@/config";
+import db, { schema } from "@/database";
 import logger from "@/logging";
 import {
   AgentModel,
   AgentTeamModel,
+  ChatApiKeyModel,
   DualLlmConfigModel,
   InternalMcpCatalogModel,
+  McpHttpSessionModel,
   MemberModel,
   OrganizationModel,
-  PromptModel,
   TeamModel,
   TeamTokenModel,
   ToolModel,
   UserModel,
 } from "@/models";
+import { secretManager } from "@/secrets-manager";
+import { modelSyncService } from "@/services/model-sync";
 import type { InsertDualLlmConfig } from "@/types";
 
 /**
@@ -31,10 +41,7 @@ export async function seedDefaultUserAndOrg(
     name?: string;
   } = {},
 ) {
-  const user = await UserModel.createOrGetExistingDefaultAdminUser(
-    auth,
-    config,
-  );
+  const user = await UserModel.createOrGetExistingDefaultAdminUser(config);
   const org = await OrganizationModel.getOrCreateDefaultOrganization();
   if (!user || !org) {
     throw new Error("Failed to seed admin user and default organization");
@@ -45,7 +52,7 @@ export async function seedDefaultUserAndOrg(
   if (!existingMember) {
     await MemberModel.create(user.id, org.id, config.role || ADMIN_ROLE_NAME);
   }
-  logger.info("✓ Seeded admin user and default organization");
+  logger.info("Seeded admin user and default organization");
   return user;
 }
 
@@ -125,287 +132,155 @@ Provide a brief summary (2-3 sentences) of the key information discovered. Focus
     };
 
     await DualLlmConfigModel.create(defaultConfig);
-    logger.info("✓ Seeded default dual LLM configuration");
+    logger.info("Seeded default dual LLM configuration");
   } else {
-    logger.info("✓ Dual LLM configuration already exists, skipping");
+    logger.info("Dual LLM configuration already exists, skipping");
   }
 }
 
 /**
- * Seeds default N8N system prompt
+ * Seeds default Chat Assistant internal agent
  */
-async function seedN8NSystemPrompt(): Promise<void> {
+async function seedChatAssistantAgent(): Promise<void> {
   const org = await OrganizationModel.getOrCreateDefaultOrganization();
-  const user = await UserModel.createOrGetExistingDefaultAdminUser(auth);
-  if (!user) {
-    logger.error(
-      "Failed to get or create default admin user, skipping n8n prompt seeding",
-    );
+
+  // Check if Chat Assistant already exists
+  const existing = await db
+    .select({ id: schema.agentsTable.id })
+    .from(schema.agentsTable)
+    .where(
+      and(
+        eq(schema.agentsTable.organizationId, org.id),
+        eq(schema.agentsTable.name, "Chat Assistant"),
+      ),
+    )
+    .limit(1);
+
+  if (existing.length > 0) {
+    logger.info("Chat Assistant internal agent already exists, skipping");
     return;
   }
 
-  // Get or create default agent first
-  const defaultAgent = await AgentModel.getAgentOrCreateDefault();
+  const systemPrompt = `You are a helpful AI assistant. You can help users with various tasks using the tools available to you.`;
 
-  // Check if N8N system prompt already exists for the default agent
-  const existingPrompts = await PromptModel.findByOrganizationId(org.id);
-  const n8nPrompt = existingPrompts.find(
-    (p) => p.name === "n8n Expert" && p.agentId === defaultAgent.id,
+  await db.insert(schema.agentsTable).values({
+    organizationId: org.id,
+    name: "Chat Assistant",
+    agentType: "agent",
+    systemPrompt,
+  });
+
+  logger.info("Seeded Chat Assistant internal agent");
+}
+
+/**
+ * Seeds Archestra MCP catalog and tools.
+ * ToolModel.seedArchestraTools handles catalog creation with onConflictDoNothing().
+ * Tools are NOT automatically assigned to agents - users must assign them manually.
+ */
+async function seedArchestraCatalogAndTools(): Promise<void> {
+  await ToolModel.seedArchestraTools(ARCHESTRA_MCP_CATALOG_ID);
+  logger.info("Seeded Archestra catalog and tools");
+}
+
+/**
+ * Seeds Playwright browser preview MCP catalog.
+ * This is a globally available catalog - tools are auto-included for all agents in chat.
+ * Each user gets their own personal Playwright server instance when they click the Browser button.
+ */
+async function seedPlaywrightCatalog(): Promise<void> {
+  const LEGACY_PLAYWRIGHT_MCP_SERVER_NAME = "playwright-browser";
+  const playwrightLocalConfig = {
+    // Pinned to v0.0.64 digest because v0.0.67 renamed --no-sandbox to --no-chromium-sandbox
+    // but the image entrypoint still uses --no-sandbox, causing immediate crashes.
+    dockerImage:
+      "mcr.microsoft.com/playwright/mcp@sha256:50fee3932984dbf40fe67be11fe22d0050eca40705cf108099d7a1e0fe6a181c",
+    transportType: "streamable-http" as const,
+    // Explicit command overrides the image ENTRYPOINT to avoid breakage from upstream image changes.
+    // v0.0.67 broke the entrypoint by renaming --no-sandbox to --no-chromium-sandbox without
+    // updating the Dockerfile. Using explicit command+args makes us resilient to such changes.
+    command: "node",
+    // Full arguments including cli.js entry point and all Chromium/server flags:
+    //   cli.js: the Playwright MCP server entry point
+    //   --headless: run Chromium in headless mode
+    //   --browser chromium: use Chromium browser
+    //   --no-sandbox: required when running as root in containers (renamed to --no-chromium-sandbox in v0.0.67)
+    //   --host 0.0.0.0: bind to all interfaces so K8s Service can route traffic to the pod
+    //   --port 8080: enable HTTP transport mode (without --port, it runs in stdio mode and exits)
+    //   --allowed-hosts *: allow connections from K8s Service DNS (default only allows localhost)
+    //   --isolated: each Mcp-Session-Id gets its own browser context for session isolation
+    //
+    // Multi-replica support: The Mcp-Session-Id is stored in the database after the first
+    // connection and reused by all backend pods so they share the same Playwright browser context.
+    // See mcp-client.ts for session ID persistence logic.
+    arguments: [
+      "cli.js",
+      "--headless",
+      "--browser",
+      "chromium",
+      "--no-sandbox",
+      "--host",
+      "0.0.0.0",
+      "--port",
+      "8080",
+      "--allowed-hosts",
+      "*",
+      "--isolated",
+    ],
+    httpPort: 8080,
+  };
+
+  // Read current catalog config before upsert to detect changes
+  let existingCatalog = await InternalMcpCatalogModel.findById(
+    PLAYWRIGHT_MCP_CATALOG_ID,
+  );
+  const legacyCatalogByName = await InternalMcpCatalogModel.findByName(
+    LEGACY_PLAYWRIGHT_MCP_SERVER_NAME,
   );
 
-  if (!n8nPrompt) {
-    const n8nSystemPromptContent = `You are an expert in n8n automation software using n8n-MCP tools. Your role is to design, build, and validate n8n workflows with maximum accuracy and efficiency.
-
-## Core Principles
-
-### 1. Silent Execution
-CRITICAL: Execute tools without commentary. Only respond AFTER all tools complete.
-
-❌ BAD: "Let me search for Slack nodes... Great! Now let me get details..."
-✅ GOOD: [Execute search_nodes and get_node_essentials in parallel, then respond]
-
-### 2. Parallel Execution
-When operations are independent, execute them in parallel for maximum performance.
-
-✅ GOOD: Call search_nodes, list_nodes, and search_templates simultaneously
-❌ BAD: Sequential tool calls (await each one before the next)
-
-### 3. Templates First
-ALWAYS check templates before building from scratch (2,709 available).
-
-### 4. Multi-Level Validation
-Use validate_node_minimal → validate_node_operation → validate_workflow pattern.
-
-### 5. Never Trust Defaults
-⚠️ CRITICAL: Default parameter values are the #1 source of runtime failures.
-ALWAYS explicitly configure ALL parameters that control node behavior.
-
-## Workflow Process
-
-1. **Start**: Call \`tools_documentation()\` for best practices
-2. **Requirements**: Understand the user's workflow goal
-3. **Template Check**: Search templates first via \`search_templates()\`
-4. **Design**: If no template, research nodes with \`search_nodes()\`, \`get_node_essentials()\`
-5. **Build**: Create workflow JSON with explicit parameter configuration
-6. **Validate**: Run 3-level validation
-7. **Create**: Use \`create_workflow()\` with validated JSON
-8. **Test**: Use \`execute_workflow()\` if test data provided
-
-## Validation Levels
-
-### Level 1: Minimal Validation
-\`validate_node_minimal({nodeType, nodeName})\`
-- Checks if node type exists
-- Returns node version and category
-- Use FIRST to verify each node exists
-
-### Level 2: Operation Validation
-\`validate_node_operation({nodeType, operation, resource})\`
-- Checks if operation/resource combination is valid
-- Returns required/optional parameters
-- Use SECOND for each configured operation
-
-### Level 3: Full Workflow Validation
-\`validate_workflow({workflow})\`
-- Checks complete workflow structure
-- Validates all connections and parameters
-- Use LAST before creating workflow
-
-## Critical Parameter Rules
-
-### ❌ NEVER DO THIS:
-\`\`\`json
-{
-  "parameters": {
-    "operation": "update"
-    // Missing required fields!
-  }
-}
-\`\`\`
-
-### ✅ ALWAYS DO THIS:
-\`\`\`json
-{
-  "parameters": {
-    "operation": "update",
-    "resource": "issue",
-    "issueId": "={{ $json.id }}",
-    "updateFields": {
-      "status": "Done",
-      "assignee": "user@example.com"
+  // One-time migration: remove legacy playwright catalog installations/resources.
+  // This runs only when the old catalog name is present in the environment.
+  if (
+    existingCatalog?.name === LEGACY_PLAYWRIGHT_MCP_SERVER_NAME ||
+    legacyCatalogByName
+  ) {
+    const catalogIdsToDelete = new Set<string>();
+    if (existingCatalog?.name === LEGACY_PLAYWRIGHT_MCP_SERVER_NAME) {
+      catalogIdsToDelete.add(existingCatalog.id);
     }
-  }
-}
-\`\`\`
-
-## Node Connection Format
-
-Use node NAMES (not IDs) in connections:
-\`\`\`json
-{
-  "connections": {
-    "Start": {
-      "main": [[{"node": "HTTP Request", "type": "main", "index": 0}]]
-    },
-    "HTTP Request": {
-      "main": [[{"node": "Set Variable", "type": "main", "index": 0}]]
+    if (legacyCatalogByName) {
+      catalogIdsToDelete.add(legacyCatalogByName.id);
     }
-  }
-}
-\`\`\`
 
-## Common Node Essentials
-
-### HTTP Request
-- **Operations**: GET, POST, PUT, DELETE, PATCH
-- **Required**: url, method
-- **Authentication**: Supports 30+ auth types
-- **Response**: Returns full response object with body, headers, statusCode
-
-### Code Node
-- **Language**: JavaScript (default), Python
-- **Input**: Accessible via \`$input.all()\` or \`$input.first()\`
-- **Output**: Return array of objects
-- **Example**:
-\`\`\`javascript
-return $input.all().map(item => ({
-  json: { result: item.json.value * 2 }
-}));
-\`\`\`
-
-### IF Node
-- **Conditions**: Value comparison with operators (equal, notEqual, larger, smaller, etc.)
-- **Required**: value1, operation, value2
-- **Outputs**: Two branches (true/false)
-
-### Set Node
-- **Operations**: Set, Remove, Rename keys
-- **Mode**: Manual or expression
-- **Required**: Explicit field mappings
-
-### Webhook
-- **Methods**: GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS
-- **Path**: Custom webhook path
-- **Response**: Return data to webhook caller
-
-### Wait Node
-- **Modes**: After time delay, until date/time, on webhook call
-- **Use**: Add delays between operations
-
-### Merge Node
-- **Modes**: Append, Combine, Choose Branch
-- **Use**: Combine data from multiple sources
-
-### Switch Node
-- **Mode**: Rules or expression
-- **Outputs**: Multiple conditional branches
-- **Use**: Multi-way branching logic
-
-### AI Agent Node (LangChain)
-- **Chat Model**: OpenAI, Anthropic, Gemini, etc.
-- **Tools**: Can connect to other nodes as tools
-- **Memory**: Optional conversation memory
-- **System Message**: Define agent behavior
-
-## Top 20 Most Used Nodes
-
-1. **n8n-nodes-base.httpRequest** - HTTP requests to any API
-2. **n8n-nodes-base.set** - Transform/set data fields
-3. **n8n-nodes-base.code** - Custom JavaScript/Python code
-4. **n8n-nodes-base.if** - Conditional branching
-5. **n8n-nodes-base.webhook** - Receive HTTP webhooks
-6. **n8n-nodes-base.slack** - Slack integration
-7. **n8n-nodes-base.googleSheets** - Google Sheets operations
-8. **n8n-nodes-base.postgres** - PostgreSQL database
-9. **n8n-nodes-base.mysql** - MySQL database
-10. **n8n-nodes-base.merge** - Merge multiple inputs
-11. **n8n-nodes-base.switch** - Multi-way branching
-12. **n8n-nodes-base.wait** - Add delays
-13. **@n8n/n8n-nodes-langchain.agent** - AI agent with tools
-14. **@n8n/n8n-nodes-langchain.lmChatOpenAi** - OpenAI chat models
-15. **n8n-nodes-base.splitInBatches** - Batch processing
-16. **n8n-nodes-base.openAi** - OpenAI legacy node
-17. **n8n-nodes-base.gmail** - Email automation
-18. **n8n-nodes-base.function** - Custom functions
-19. **n8n-nodes-base.stickyNote** - Workflow documentation
-20. **n8n-nodes-base.executeWorkflowTrigger** - Sub-workflow calls
-
-**Note:** LangChain nodes use the \`@n8n/n8n-nodes-langchain.\` prefix, core nodes use \`n8n-nodes-base.\``;
-
-    await PromptModel.create(org.id, {
-      name: "n8n Expert",
-      agentId: defaultAgent.id,
-      systemPrompt: n8nSystemPromptContent,
-    });
-    logger.info("✓ Seeded n8n Expert system prompt");
-  } else {
-    logger.info("✓ n8n Expert system prompt already exists, skipping");
-  }
-}
-
-/**
- * Seeds default regular prompts (prompt suggestions)
- */
-async function seedDefaultRegularPrompts(): Promise<void> {
-  const org = await OrganizationModel.getOrCreateDefaultOrganization();
-  const user = await UserModel.createOrGetExistingDefaultAdminUser(auth);
-  if (!user) {
-    logger.error(
-      "Failed to get or create default admin user, skipping regular prompts seeding",
-    );
-    return;
-  }
-
-  // Get or create default agent first
-  const defaultAgent = await AgentModel.getAgentOrCreateDefault();
-
-  const defaultPrompts = [
-    {
-      name: "Check n8n Connectivity",
-      userPrompt: "Check n8n connectivity by running healthcheck tool",
-    },
-    {
-      name: "Create Demo AI Agent Workflow",
-      userPrompt:
-        "Create an n8n workflow that includes the default AI Agent node. It should be a simple default node. Use node names instead of IDs in the connections. Use n8n mcp to create flow",
-    },
-  ];
-
-  // Check existing regular prompts for the default agent
-  const existingPrompts = await PromptModel.findByOrganizationId(org.id);
-
-  for (const promptData of defaultPrompts) {
-    const exists = existingPrompts.find(
-      (p) => p.name === promptData.name && p.agentId === defaultAgent.id,
-    );
-    if (!exists) {
-      await PromptModel.create(org.id, {
-        name: promptData.name,
-        agentId: defaultAgent.id,
-        userPrompt: promptData.userPrompt,
-      });
-      logger.info(`✓ Seeded regular prompt: ${promptData.name}`);
-    } else {
-      logger.info(
-        `✓ Regular prompt already exists: ${promptData.name}, skipping`,
-      );
+    for (const catalogId of catalogIdsToDelete) {
+      const deleted = await InternalMcpCatalogModel.delete(catalogId);
+      if (deleted) {
+        logger.info(
+          { catalogId, legacyCatalogName: LEGACY_PLAYWRIGHT_MCP_SERVER_NAME },
+          "Removed legacy Playwright catalog and related installations/resources",
+        );
+      }
     }
-  }
-}
 
-/**
- * Creates and assigns Archestra MCP tools to all agents
- */
-async function seedArchestraTools(): Promise<void> {
-  const agents = await AgentModel.findAll();
-
-  for (const agent of agents) {
-    // Assigns Archestra MCP tools, while also creating them in the database if they are missing.
-    await ToolModel.assignArchestraToolsToAgent(agent.id);
-    logger.info(
-      `✓ Assigned Archestra MCP tools to agent: ${agent.name} (${agent.id})`,
-    );
+    existingCatalog = null;
   }
+
+  // Only insert on first creation; never overwrite user edits on restart.
+  // Future config changes (e.g., docker image pin updates) should use database migrations.
+  await db
+    .insert(schema.internalMcpCatalogTable)
+    .values({
+      id: PLAYWRIGHT_MCP_CATALOG_ID,
+      name: PLAYWRIGHT_MCP_SERVER_NAME,
+      description:
+        "Browser automation for chat - each user gets their own isolated browser session",
+      serverType: "local",
+      requiresAuth: false,
+      localConfig: playwrightLocalConfig,
+    })
+    .onConflictDoNothing();
+
+  logger.info("Seeded Playwright browser preview catalog");
 }
 
 /**
@@ -414,7 +289,8 @@ async function seedArchestraTools(): Promise<void> {
 async function seedDefaultTeam(): Promise<void> {
   const org = await OrganizationModel.getOrCreateDefaultOrganization();
   const user = await UserModel.createOrGetExistingDefaultAdminUser(auth);
-  const defaultAgent = await AgentModel.getAgentOrCreateDefault();
+  const defaultMcpGateway = await AgentModel.getMCPGatewayOrCreateDefault();
+  const defaultLlmProxy = await AgentModel.getLLMProxyOrCreateDefault();
 
   if (!user) {
     logger.error(
@@ -434,21 +310,24 @@ async function seedDefaultTeam(): Promise<void> {
       organizationId: org.id,
       createdBy: user.id,
     });
-    logger.info("✓ Seeded default team");
+    logger.info("Seeded default team");
   } else {
-    logger.info("✓ Default team already exists, skipping creation");
+    logger.info("Default team already exists, skipping creation");
   }
 
   // Add default user to team (if not already a member)
   const isUserInTeam = await TeamModel.isUserInTeam(defaultTeam.id, user.id);
   if (!isUserInTeam) {
     await TeamModel.addMember(defaultTeam.id, user.id);
-    logger.info("✓ Added default user to default team");
+    logger.info("Added default user to default team");
   }
 
-  // Assign team to default profile (idempotent)
-  await AgentTeamModel.assignTeamsToAgent(defaultAgent.id, [defaultTeam.id]);
-  logger.info("✓ Assigned default team to default profile");
+  // Assign team to default agents (idempotent)
+  await AgentTeamModel.assignTeamsToAgent(defaultMcpGateway.id, [
+    defaultTeam.id,
+  ]);
+  await AgentTeamModel.assignTeamsToAgent(defaultLlmProxy.id, [defaultTeam.id]);
+  logger.info("Assigned default team to default agents");
 }
 
 /**
@@ -468,7 +347,7 @@ async function seedTestMcpServer(): Promise<void> {
     "internal-dev-test-server",
   );
   if (existing) {
-    logger.info("✓ Test MCP server already exists in catalog, skipping");
+    logger.info("Test MCP server already exists in catalog, skipping");
     return;
   }
 
@@ -492,7 +371,7 @@ async function seedTestMcpServer(): Promise<void> {
       ],
     },
   });
-  logger.info("✓ Seeded test MCP server (internal-dev-test-server)");
+  logger.info("Seeded test MCP server (internal-dev-test-server)");
 }
 
 /**
@@ -583,16 +462,178 @@ async function seedMcpAppsCatalog(): Promise<void> {
   }
 }
 
+/**
+ * Seeds chat API keys from environment variables.
+ * For each provider with ARCHESTRA_CHAT_<PROVIDER>_API_KEY set, creates an org-wide API key
+ * and syncs models from the provider.
+ *
+ * This enables:
+ * - E2E tests: WireMock mock keys are set via env vars, models sync automatically
+ * - Production: Admins can bootstrap org-wide keys via env vars
+ */
+async function seedChatApiKeysFromEnv(): Promise<void> {
+  const org = await OrganizationModel.getOrCreateDefaultOrganization();
+
+  // Map of provider to environment variable
+  const providerEnvVars: Record<SupportedProvider, string> = {
+    anthropic: config.chat.anthropic.apiKey,
+    openai: config.chat.openai.apiKey,
+    gemini: config.chat.gemini.apiKey,
+    cerebras: config.chat.cerebras.apiKey,
+    cohere: config.chat.cohere.apiKey,
+    mistral: config.chat.mistral.apiKey,
+    ollama: config.chat.ollama.apiKey,
+    vllm: config.chat.vllm.apiKey,
+    zhipuai: config.chat.zhipuai.apiKey,
+    bedrock: config.chat.bedrock.apiKey,
+  };
+
+  for (const [provider, apiKeyValue] of Object.entries(providerEnvVars)) {
+    // Skip providers without API keys configured
+    if (!apiKeyValue || apiKeyValue.trim() === "") {
+      continue;
+    }
+
+    const typedProvider = provider as SupportedProvider;
+
+    // Check if API key already exists for this provider
+    const existing = await ChatApiKeyModel.findByScope(
+      org.id,
+      typedProvider,
+      "org_wide",
+    );
+
+    if (existing) {
+      // Sync models if not already synced
+      await syncModelsForApiKey(existing.id, typedProvider, apiKeyValue);
+      continue;
+    }
+
+    // Create a secret with the API key from env
+    const secret = await secretManager().createSecret(
+      { apiKey: apiKeyValue },
+      `chatapikey-env-${provider}`,
+    );
+
+    // Create the API key
+    const apiKey = await ChatApiKeyModel.create({
+      organizationId: org.id,
+      name: getProviderDisplayName(typedProvider),
+      provider: typedProvider,
+      secretId: secret.id,
+      scope: "org_wide",
+      userId: null,
+      teamId: null,
+    });
+
+    logger.info(
+      { provider, apiKeyId: apiKey.id },
+      "Created chat API key from environment variable",
+    );
+
+    // Sync models from provider
+    await syncModelsForApiKey(apiKey.id, typedProvider, apiKeyValue);
+  }
+}
+
+/**
+ * Sync models for an API key.
+ */
+async function syncModelsForApiKey(
+  apiKeyId: string,
+  provider: SupportedProvider,
+  apiKeyValue: string,
+): Promise<void> {
+  try {
+    await modelSyncService.syncModelsForApiKey(apiKeyId, provider, apiKeyValue);
+    logger.info({ provider, apiKeyId }, "Synced models for API key");
+  } catch (error) {
+    logger.error(
+      {
+        provider,
+        apiKeyId,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      },
+      "Failed to sync models for API key",
+    );
+  }
+}
+
+/**
+ * Get display name for a provider.
+ */
+function getProviderDisplayName(provider: SupportedProvider): string {
+  const displayNames: Record<SupportedProvider, string> = {
+    anthropic: "Anthropic",
+    openai: "OpenAI",
+    gemini: "Google",
+    cerebras: "Cerebras",
+    cohere: "Cohere",
+    mistral: "Mistral",
+    ollama: "Ollama",
+    vllm: "vLLM",
+    zhipuai: "ZhipuAI",
+    bedrock: "AWS Bedrock",
+  };
+  return displayNames[provider];
+}
+
+/**
+ * Migrates existing Playwright tool assignments to use dynamic credentials.
+ * Static credentials break user isolation since multiple users would share
+ * the same browser session. This ensures all Playwright assignments use
+ * useDynamicTeamCredential=true.
+ */
+async function migratePlaywrightToolsToDynamicCredential(): Promise<void> {
+  // Find all tool IDs belonging to the Playwright catalog
+  const playwrightTools = await db
+    .select({ id: schema.toolsTable.id })
+    .from(schema.toolsTable)
+    .where(eq(schema.toolsTable.catalogId, PLAYWRIGHT_MCP_CATALOG_ID));
+
+  if (playwrightTools.length === 0) return;
+
+  const playwrightToolIds = playwrightTools.map((t) => t.id);
+
+  // Update all assignments that still use static credentials
+  const result = await db
+    .update(schema.agentToolsTable)
+    .set({
+      useDynamicTeamCredential: true,
+      credentialSourceMcpServerId: null,
+      executionSourceMcpServerId: null,
+    })
+    .where(
+      and(
+        inArray(schema.agentToolsTable.toolId, playwrightToolIds),
+        eq(schema.agentToolsTable.useDynamicTeamCredential, false),
+      ),
+    );
+
+  const count = result.rowCount ?? 0;
+  if (count > 0) {
+    logger.info(
+      { updatedCount: count },
+      "Migrated Playwright tool assignments to dynamic credentials",
+    );
+  }
+}
+
 export async function seedRequiredStartingData(): Promise<void> {
   await seedDefaultUserAndOrg();
   await seedDualLlmConfig();
-  // Create default agent before seeding prompts (prompts need agentId)
-  await AgentModel.getAgentOrCreateDefault();
+  // Create default agents before seeding internal agents
+  await AgentModel.getMCPGatewayOrCreateDefault();
+  await AgentModel.getLLMProxyOrCreateDefault();
   await seedDefaultTeam();
-  await seedN8NSystemPrompt();
-  await seedDefaultRegularPrompts();
-  await seedArchestraTools();
+  await seedChatAssistantAgent();
+  await seedArchestraCatalogAndTools();
+  await seedPlaywrightCatalog();
+  await migratePlaywrightToolsToDynamicCredential();
   await seedTestMcpServer();
   await seedMcpAppsCatalog();
   await seedTeamTokens();
+  await seedChatApiKeysFromEnv();
+  // Clean up orphaned MCP HTTP sessions (older than 24h)
+  await McpHttpSessionModel.deleteExpired();
 }

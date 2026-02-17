@@ -1,13 +1,92 @@
 import type { SupportedProvider } from "@shared";
 import type { PartialUIMessage } from "@/components/chatbot-demo";
 import AnthropicMessagesInteraction from "./llmProviders/anthropic";
+import BedrockConverseInteraction from "./llmProviders/bedrock";
+import CerebrasChatCompletionInteraction from "./llmProviders/cerebras";
+import CohereChatInteraction from "./llmProviders/cohere";
 import type {
   DualLlmResult,
   Interaction,
   InteractionUtils,
 } from "./llmProviders/common";
 import GeminiGenerateContentInteraction from "./llmProviders/gemini";
+import MistralChatCompletionInteraction from "./llmProviders/mistral";
+import OllamaChatCompletionInteraction from "./llmProviders/ollama";
 import OpenAiChatCompletionInteraction from "./llmProviders/openai";
+import VllmChatCompletionInteraction from "./llmProviders/vllm";
+import ZhipuaiChatCompletionInteraction from "./llmProviders/zhipuai";
+
+export interface CostSavingsInput {
+  cost: string | null | undefined;
+  baselineCost: string | null | undefined;
+  toonCostSavings: string | null | undefined;
+  toonTokensBefore: number | null | undefined;
+  toonTokensAfter: number | null | undefined;
+}
+
+export interface CostSavingsResult {
+  /** Savings from model optimization (baselineCost - cost) */
+  costOptimizationSavings: number;
+  /** Savings from TOON compression */
+  toonSavings: number;
+  /** Number of tokens saved by TOON compression */
+  toonTokensSaved: number | null;
+  /** Total savings (costOptimization + toon) */
+  totalSavings: number;
+  /** Baseline cost before any optimization */
+  baselineCost: number;
+  /** Actual cost after optimization */
+  actualCost: number;
+  /** Total savings as percentage of baseline */
+  savingsPercent: number;
+  /** Whether there are any savings at all */
+  hasSavings: boolean;
+}
+
+/**
+ * Calculate all cost savings from an interaction.
+ * Used by both the logs table and detail view for consistent display.
+ */
+export function calculateCostSavings(
+  input: CostSavingsInput,
+): CostSavingsResult {
+  const costNum = input.cost ? Number.parseFloat(input.cost) : 0;
+  const baselineCostNum = input.baselineCost
+    ? Number.parseFloat(input.baselineCost)
+    : 0;
+  const toonCostSavingsNum = input.toonCostSavings
+    ? Number.parseFloat(input.toonCostSavings)
+    : 0;
+
+  // Calculate tokens saved from TOON compression
+  const toonTokensSaved =
+    input.toonTokensBefore &&
+    input.toonTokensAfter &&
+    input.toonTokensBefore > input.toonTokensAfter
+      ? input.toonTokensBefore - input.toonTokensAfter
+      : null;
+
+  // Calculate cost optimization savings (from model selection)
+  const costOptimizationSavings = baselineCostNum - costNum;
+
+  // Calculate total savings
+  const totalSavings = costOptimizationSavings + toonCostSavingsNum;
+
+  // Calculate savings percentage
+  const savingsPercent =
+    baselineCostNum > 0 ? (totalSavings / baselineCostNum) * 100 : 0;
+
+  return {
+    costOptimizationSavings,
+    toonSavings: toonCostSavingsNum,
+    toonTokensSaved,
+    totalSavings,
+    baselineCost: baselineCostNum,
+    actualCost: baselineCostNum - totalSavings,
+    savingsPercent,
+    hasSavings: totalSavings !== 0,
+  };
+}
 
 export class DynamicInteraction implements InteractionUtils {
   private interactionClass: InteractionUtils;
@@ -16,6 +95,7 @@ export class DynamicInteraction implements InteractionUtils {
   id: string;
   profileId: string;
   externalAgentId: string | null;
+  executionId: string | null;
   type: Interaction["type"];
   provider: SupportedProvider;
   endpoint: string;
@@ -29,6 +109,7 @@ export class DynamicInteraction implements InteractionUtils {
     this.id = interaction.id;
     this.profileId = interaction.profileId;
     this.externalAgentId = interaction.externalAgentId;
+    this.executionId = interaction.executionId;
     this.type = interaction.type;
     this.provider = provider as SupportedProvider;
     this.endpoint = endpoint;
@@ -40,12 +121,29 @@ export class DynamicInteraction implements InteractionUtils {
   }
 
   private getInteractionClass(interaction: Interaction): InteractionUtils {
-    if (this.type === "openai:chatCompletions") {
+    const type = this.type;
+    if (type === "openai:chatCompletions") {
       return new OpenAiChatCompletionInteraction(interaction);
-    } else if (this.type === "anthropic:messages") {
+    } else if (type === "anthropic:messages") {
       return new AnthropicMessagesInteraction(interaction);
+    } else if (type === "bedrock:converse") {
+      return new BedrockConverseInteraction(interaction);
+    } else if (type === "zhipuai:chatCompletions") {
+      return new ZhipuaiChatCompletionInteraction(interaction);
+    } else if (type === "cerebras:chatCompletions") {
+      return new CerebrasChatCompletionInteraction(interaction);
+    } else if (type === "mistral:chatCompletions") {
+      return new MistralChatCompletionInteraction(interaction);
+    } else if (type === "vllm:chatCompletions") {
+      return new VllmChatCompletionInteraction(interaction);
+    } else if (type === "ollama:chatCompletions") {
+      return new OllamaChatCompletionInteraction(interaction);
+    } else if (type === "cohere:chat") {
+      return new CohereChatInteraction(interaction);
+    } else if (type === "gemini:generateContent") {
+      return new GeminiGenerateContentInteraction(interaction);
     }
-    return new GeminiGenerateContentInteraction(interaction);
+    throw new Error(`Unsupported interaction type: ${type}`);
   }
 
   isLastMessageToolCall(): boolean {

@@ -4,9 +4,12 @@ export const RouteId = {
   GetAllAgents: "getAllAgents",
   CreateAgent: "createAgent",
   GetAgent: "getAgent",
-  GetDefaultAgent: "getDefaultAgent",
+  GetDefaultMcpGateway: "getDefaultMcpGateway",
+  GetDefaultLlmProxy: "getDefaultLlmProxy",
   UpdateAgent: "updateAgent",
   DeleteAgent: "deleteAgent",
+  GetAgentVersions: "getAgentVersions",
+  RollbackAgent: "rollbackAgent",
   GetLabelKeys: "getLabelKeys",
   GetLabelValues: "getLabelValues",
 
@@ -21,6 +24,12 @@ export const RouteId = {
   UpdateAgentTool: "updateAgentTool",
   GetAgentAvailableTokens: "getAgentAvailableTokens",
 
+  // Agent Delegation Routes (internal agents only)
+  GetAgentDelegations: "getAgentDelegations",
+  SyncAgentDelegations: "syncAgentDelegations",
+  DeleteAgentDelegation: "deleteAgentDelegation",
+  GetAllDelegationConnections: "getAllDelegationConnections",
+
   // Features Routes
   GetFeatures: "getFeatures",
 
@@ -31,19 +40,22 @@ export const RouteId = {
   GetInternalMcpCatalog: "getInternalMcpCatalog",
   CreateInternalMcpCatalogItem: "createInternalMcpCatalogItem",
   GetInternalMcpCatalogItem: "getInternalMcpCatalogItem",
+  GetInternalMcpCatalogTools: "getInternalMcpCatalogTools",
   UpdateInternalMcpCatalogItem: "updateInternalMcpCatalogItem",
   DeleteInternalMcpCatalogItem: "deleteInternalMcpCatalogItem",
   DeleteInternalMcpCatalogItemByName: "deleteInternalMcpCatalogItemByName",
+  GetDeploymentYamlPreview: "getDeploymentYamlPreview",
+  ValidateDeploymentYaml: "validateDeploymentYaml",
+  ResetDeploymentYaml: "resetDeploymentYaml",
 
   // MCP Server Routes
   GetMcpServers: "getMcpServers",
   GetMcpServer: "getMcpServer",
   GetMcpServerTools: "getMcpServerTools",
-  GetMcpServerLogs: "getMcpServerLogs",
   InstallMcpServer: "installMcpServer",
   DeleteMcpServer: "deleteMcpServer",
-  RestartMcpServer: "restartMcpServer",
-  RestartAllMcpServerInstallations: "restartAllMcpServerInstallations",
+  ReauthenticateMcpServer: "reauthenticateMcpServer",
+  ReinstallMcpServer: "reinstallMcpServer",
   GetMcpServerInstallationStatus: "getMcpServerInstallationStatus",
   McpProxy: "mcpProxy",
 
@@ -60,6 +72,8 @@ export const RouteId = {
   // OAuth Routes
   InitiateOAuth: "initiateOAuth",
   HandleOAuthCallback: "handleOAuthCallback",
+  GetOAuthClientInfo: "getOAuthClientInfo",
+  SubmitOAuthConsent: "submitOAuthConsent",
 
   // Team Routes
   GetTeams: "getTeams",
@@ -93,11 +107,14 @@ export const RouteId = {
 
   // Tool Routes
   GetTools: "getTools",
+  GetToolsWithAssignments: "getToolsWithAssignments",
   GetUnassignedTools: "getUnassignedTools",
+  DeleteTool: "deleteTool",
 
   // Interaction Routes
   GetInteractions: "getInteractions",
   GetInteraction: "getInteraction",
+  GetInteractionSessions: "getInteractionSessions",
   GetUniqueExternalAgentIds: "getUniqueExternalAgentIds",
   GetUniqueUserIds: "getUniqueUserIds",
 
@@ -117,6 +134,8 @@ export const RouteId = {
   GetTrustedDataPolicy: "getTrustedDataPolicy",
   UpdateTrustedDataPolicy: "updateTrustedDataPolicy",
   DeleteTrustedDataPolicy: "deleteTrustedDataPolicy",
+  BulkUpsertDefaultCallPolicy: "bulkUpsertDefaultCallPolicy",
+  BulkUpsertDefaultResultPolicy: "bulkUpsertDefaultResultPolicy",
   GetPolicyConfigSubagentPrompt: "getPolicyConfigSubagentPrompt",
 
   // Dual LLM Config Routes
@@ -140,8 +159,46 @@ export const RouteId = {
   AnthropicMessagesWithDefaultAgent: "anthropicMessagesWithDefaultAgent",
   AnthropicMessagesWithAgent: "anthropicMessagesWithAgent",
 
+  // Proxy Routes - Cohere
+  CohereChatWithDefaultAgent: "cohereChatWithDefaultAgent",
+  CohereChatWithAgent: "cohereChatWithAgent",
+  // Proxy Routes - Cerebras
+  CerebrasChatCompletionsWithDefaultAgent:
+    "cerebrasChatCompletionsWithDefaultAgent",
+  CerebrasChatCompletionsWithAgent: "cerebrasChatCompletionsWithAgent",
+
+  // Proxy Routes - Mistral
+  MistralChatCompletionsWithDefaultAgent:
+    "mistralChatCompletionsWithDefaultAgent",
+  MistralChatCompletionsWithAgent: "mistralChatCompletionsWithAgent",
+
+  // Proxy Routes - vLLM
+  VllmChatCompletionsWithDefaultAgent: "vllmChatCompletionsWithDefaultAgent",
+  VllmChatCompletionsWithAgent: "vllmChatCompletionsWithAgent",
+
+  // Proxy Routes - Ollama
+  OllamaChatCompletionsWithDefaultAgent:
+    "ollamaChatCompletionsWithDefaultAgent",
+  OllamaChatCompletionsWithAgent: "ollamaChatCompletionsWithAgent",
+  // Proxy Routes - Zhipu AI
+  ZhipuaiChatCompletionsWithDefaultAgent:
+    "zhipuaiChatCompletionsWithDefaultAgent",
+  ZhipuaiChatCompletionsWithAgent: "zhipuaiChatCompletionsWithAgent",
+
+  // Proxy Routes - AWS Bedrock
+  BedrockConverseWithDefaultAgent: "bedrockConverseWithDefaultAgent",
+  BedrockConverseWithAgent: "bedrockConverseWithAgent",
+  BedrockConverseStreamWithDefaultAgent:
+    "bedrockConverseStreamWithDefaultAgent",
+  BedrockConverseStreamWithAgent: "bedrockConverseStreamWithAgent",
+  // AI SDK compatible routes (model ID in URL)
+  BedrockConverseWithAgentAndModel: "bedrockConverseWithAgentAndModel",
+  BedrockConverseStreamWithAgentAndModel:
+    "bedrockConverseStreamWithAgentAndModel",
+
   // Chat Routes
   StreamChat: "streamChat",
+  StopChatStream: "stopChatStream",
   GetChatConversations: "getChatConversations",
   GetChatConversation: "getChatConversation",
   GetChatAgentMcpTools: "getChatAgentMcpTools",
@@ -155,6 +212,7 @@ export const RouteId = {
   UpdateConversationEnabledTools: "updateConversationEnabledTools",
   DeleteConversationEnabledTools: "deleteConversationEnabledTools",
   GetChatModels: "getChatModels",
+  SyncChatModels: "syncChatModels",
 
   // Chat API Key Routes
   GetChatApiKeys: "getChatApiKeys",
@@ -164,11 +222,15 @@ export const RouteId = {
   UpdateChatApiKey: "updateChatApiKey",
   DeleteChatApiKey: "deleteChatApiKey",
 
+  // Models with API Keys Routes
+  GetModelsWithApiKeys: "getModelsWithApiKeys",
+
   // Prompt Routes
   GetPrompts: "getPrompts",
   CreatePrompt: "createPrompt",
   GetPrompt: "getPrompt",
   GetPromptVersions: "getPromptVersions",
+  GetPromptTools: "getPromptTools",
   RollbackPrompt: "rollbackPrompt",
   UpdatePrompt: "updatePrompt",
   DeletePrompt: "deletePrompt",
@@ -177,6 +239,12 @@ export const RouteId = {
   GetAgentPrompts: "getAgentPrompts",
   AssignAgentPrompts: "assignAgentPrompts",
   DeleteAgentPrompt: "deleteAgentPrompt",
+
+  // Prompt Agent Routes (agent assignment to prompts)
+  GetAllPromptAgentConnections: "getAllPromptAgentConnections",
+  GetPromptAgents: "getPromptAgents",
+  SyncPromptAgents: "syncPromptAgents",
+  DeletePromptAgent: "deletePromptAgent",
 
   // Limits Routes
   GetLimits: "getLimits",
@@ -190,13 +258,17 @@ export const RouteId = {
   UpdateOrganization: "updateOrganization",
   GetOnboardingStatus: "getOnboardingStatus",
 
-  // SSO Provider Routes
-  GetPublicSsoProviders: "getPublicSsoProviders",
-  GetSsoProviders: "getSsoProviders",
-  GetSsoProvider: "getSsoProvider",
-  CreateSsoProvider: "createSsoProvider",
-  UpdateSsoProvider: "updateSsoProvider",
-  DeleteSsoProvider: "deleteSsoProvider",
+  // Appearance Routes (public/unauthenticated)
+  GetPublicAppearance: "getPublicAppearance",
+
+  // Identity Provider Routes
+  GetPublicIdentityProviders: "getPublicIdentityProviders",
+  GetIdentityProviders: "getIdentityProviders",
+  GetIdentityProvider: "getIdentityProvider",
+  CreateIdentityProvider: "createIdentityProvider",
+  UpdateIdentityProvider: "updateIdentityProvider",
+  DeleteIdentityProvider: "deleteIdentityProvider",
+  GetIdentityProviderIdpLogoutUrl: "getIdentityProviderIdpLogoutUrl",
 
   // User Routes
   GetUserPermissions: "getUserPermissions",
@@ -236,6 +308,24 @@ export const RouteId = {
   GetSecret: "getSecret",
   CheckSecretsConnectivity: "checkSecretsConnectivity",
   InitializeSecretsManager: "initializeSecretsManager",
+
+  // Incoming Email Routes
+  GetIncomingEmailStatus: "getIncomingEmailStatus",
+  SetupIncomingEmailWebhook: "setupIncomingEmailWebhook",
+  RenewIncomingEmailSubscription: "renewIncomingEmailSubscription",
+  DeleteIncomingEmailSubscription: "deleteIncomingEmailSubscription",
+  GetAgentEmailAddress: "getAgentEmailAddress",
+
+  // ChatOps Routes
+  GetChatOpsStatus: "getChatOpsStatus",
+  ListChatOpsBindings: "listChatOpsBindings",
+  DeleteChatOpsBinding: "deleteChatOpsBinding",
+  UpdateChatOpsBinding: "updateChatOpsBinding",
+  UpdateChatOpsConfigInQuickstart: "updateChatOpsConfigInQuickstart",
+  RefreshChatOpsChannelDiscovery: "refreshChatOpsChannelDiscovery",
+
+  // Invitation Routes
+  CheckInvitation: "checkInvitation",
 } as const;
 
 export type RouteId = (typeof RouteId)[keyof typeof RouteId];

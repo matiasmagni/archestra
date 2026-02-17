@@ -34,7 +34,7 @@ export type OpenAiChatCompletionRequestInput = {
              */
             image_url: {
                 url: string;
-                detail: 'auto' | 'low' | 'high';
+                detail?: 'auto' | 'low' | 'high';
             };
         } | {
             type: 'input_audio';
@@ -108,6 +108,15 @@ export type OpenAiChatCompletionRequestInput = {
         content: string | Array<{
             type: 'text';
             text: string;
+        } | {
+            type: 'image_url';
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L765
+             */
+            image_url: {
+                url: string;
+                detail?: 'auto' | 'low' | 'high';
+            };
         }>;
         tool_call_id: string;
     } | {
@@ -305,9 +314,6 @@ export type OpenAiChatCompletionResponseInput = {
                 arguments: string;
                 name: string;
             } | unknown;
-            /**
-             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1197
-             */
             tool_calls?: Array<{
                 id: string;
                 type: 'function';
@@ -328,7 +334,7 @@ export type OpenAiChatCompletionResponseInput = {
                     input: string;
                     name: string;
                 };
-            }>;
+            }> | unknown;
         };
     }>;
     created: number;
@@ -1246,6 +1252,14 @@ export type AnthropicMessagesRequestInput = {
             cache_control?: unknown;
             citations?: Array<unknown> | unknown;
         } | {
+            type: 'image';
+            source: {
+                type: 'base64';
+                media_type: string;
+                data: string;
+            };
+            cache_control?: unknown;
+        } | {
             id: string;
             input: unknown;
             name: string;
@@ -1260,6 +1274,14 @@ export type AnthropicMessagesRequestInput = {
                 type: 'text';
                 cache_control?: unknown;
                 citations?: Array<unknown> | unknown;
+            } | {
+                type: 'image';
+                source: {
+                    type: 'base64';
+                    media_type: string;
+                    data: string;
+                };
+                cache_control?: unknown;
             }>;
             is_error?: boolean;
         }>;
@@ -1363,14 +1385,7 @@ export type AnthropicMessagesResponseInput = {
     };
 };
 
-export type WebSocketMessageInput = {
-    type: 'hello-world';
-    payload: {
-        [key: string]: unknown;
-    };
-};
-
-export type OpenAiChatCompletionRequest = {
+export type CerebrasChatCompletionRequestInput = {
     model: string;
     /**
      * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1186
@@ -1400,7 +1415,7 @@ export type OpenAiChatCompletionRequest = {
              */
             image_url: {
                 url: string;
-                detail: 'auto' | 'low' | 'high';
+                detail?: 'auto' | 'low' | 'high';
             };
         } | {
             type: 'input_audio';
@@ -1474,6 +1489,1712 @@ export type OpenAiChatCompletionRequest = {
         content: string | Array<{
             type: 'text';
             text: string;
+        } | {
+            type: 'image_url';
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L765
+             */
+            image_url: {
+                url: string;
+                detail?: 'auto' | 'low' | 'high';
+            };
+        }>;
+        tool_call_id: string;
+    } | {
+        role: 'function';
+        content: string | unknown;
+        name: string;
+    }>;
+    /**
+     *
+     * A function tool that can be used to generate a response.
+     *
+     * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1392
+     *
+     */
+    tools?: Array<{
+        type: 'function';
+        /**
+         * https://github.com/openai/openai-node/blob/master/src/resources/shared.ts#L174
+         */
+        function: {
+            name: string;
+            description?: string;
+            /**
+             *
+             * https://github.com/openai/openai-node/blob/master/src/resources/shared.ts#L217
+             *
+             * The parameters the functions accepts, described as a JSON Schema object. See the
+             * [guide](https://platform.openai.com/docs/guides/function-calling) for examples,
+             * and the [JSON Schema reference](https://json-schema.org/understanding-json-schema/) for
+             * documentation about the format.
+             *
+             * Omitting parameters defines a function with an empty parameter list.
+             *
+             */
+            parameters?: {
+                [key: string]: unknown;
+            };
+            strict?: boolean | unknown;
+        };
+    } | {
+        type: 'custom';
+        custom: {
+            /**
+             * The name of the custom tool, used to identify it in tool calls
+             */
+            name: string;
+            /**
+             * Optional description of the custom tool, used to provide more context
+             */
+            description?: string;
+            /**
+             * The input format for the custom tool. Default is unconstrained text.
+             */
+            format?: {
+                /**
+                 * Unconstrained text format. Always `text`
+                 */
+                type: 'text';
+            } | {
+                type: 'grammar';
+                /**
+                 * Your chosen grammar
+                 */
+                grammar: {
+                    /**
+                     * The grammar definition
+                     */
+                    definition: string;
+                    /**
+                     * The syntax of the grammar definition
+                     */
+                    syntax: 'lark' | 'regex';
+                };
+            };
+        };
+    }>;
+    /**
+     * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1405
+     */
+    tool_choice?: 'none' | 'auto' | 'required' | {
+        type: 'allowed_tools';
+        /**
+         * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1455
+         */
+        allowed_tools: {
+            /**
+             *
+             * Constrains the tools available to the model to a pre-defined set.
+             *
+             * auto allows the model to pick from among the allowed tools and generate a
+             * message.
+             *
+             * required requires the model to call one or more of the allowed tools.
+             *
+             */
+            mode: 'auto' | 'required';
+            /**
+             * A list of tool definitions that the model should be allowed to call
+             */
+            tools: Array<{
+                [key: string]: {
+                    type: 'function';
+                    /**
+                     * https://github.com/openai/openai-node/blob/master/src/resources/shared.ts#L174
+                     */
+                    function: {
+                        name: string;
+                        description?: string;
+                        /**
+                         *
+                         * https://github.com/openai/openai-node/blob/master/src/resources/shared.ts#L217
+                         *
+                         * The parameters the functions accepts, described as a JSON Schema object. See the
+                         * [guide](https://platform.openai.com/docs/guides/function-calling) for examples,
+                         * and the [JSON Schema reference](https://json-schema.org/understanding-json-schema/) for
+                         * documentation about the format.
+                         *
+                         * Omitting parameters defines a function with an empty parameter list.
+                         *
+                         */
+                        parameters?: {
+                            [key: string]: unknown;
+                        };
+                        strict?: boolean | unknown;
+                    };
+                };
+            }>;
+        };
+    } | {
+        type: 'function';
+        function: {
+            name: string;
+        };
+    } | {
+        type: 'custom';
+        custom: {
+            /**
+             * The name of the custom tool, used to identify it in tool calls
+             */
+            name: string;
+            /**
+             * Optional description of the custom tool, used to provide more context
+             */
+            description?: string;
+            /**
+             * The input format for the custom tool. Default is unconstrained text.
+             */
+            format?: {
+                /**
+                 * Unconstrained text format. Always `text`
+                 */
+                type: 'text';
+            } | {
+                type: 'grammar';
+                /**
+                 * Your chosen grammar
+                 */
+                grammar: {
+                    /**
+                     * The grammar definition
+                     */
+                    definition: string;
+                    /**
+                     * The syntax of the grammar definition
+                     */
+                    syntax: 'lark' | 'regex';
+                };
+            };
+        };
+    };
+    temperature?: number | unknown;
+    max_tokens?: number | unknown;
+    stream?: boolean | unknown;
+};
+
+export type CerebrasChatCompletionResponseInput = {
+    id: string;
+    choices: Array<{
+        finish_reason: 'stop' | 'length' | 'tool_calls' | 'content_filter' | 'function_call';
+        index: number;
+        logprobs: unknown;
+        /**
+         * https://github.com/Cerebras/cerebras-cloud-sdk-node/blob/main/src/resources/chat/completions.ts
+         */
+        message: {
+            content?: string | unknown;
+            refusal?: string | unknown;
+            role: 'assistant';
+            annotations?: Array<unknown>;
+            audio?: unknown;
+            function_call?: {
+                arguments: string;
+                name: string;
+            } | unknown;
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1197
+             */
+            tool_calls?: Array<{
+                id: string;
+                type: 'function';
+                /**
+                 * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1165
+                 */
+                function: {
+                    arguments: string;
+                    name: string;
+                };
+            } | {
+                id: string;
+                type: 'custom';
+                /**
+                 * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1128
+                 */
+                custom: {
+                    input: string;
+                    name: string;
+                };
+            }>;
+        };
+    }>;
+    created: number;
+    model: string;
+    object: 'chat.completion';
+    server_tier?: string;
+    system_fingerprint?: string | unknown;
+    /**
+     * https://github.com/openai/openai-node/blob/master/src/resources/completions.ts#L113
+     */
+    usage?: {
+        completion_tokens: number;
+        prompt_tokens: number;
+        total_tokens: number;
+        /**
+         * https://github.com/openai/openai-node/blob/master/src/resources/completions.ts#L144
+         */
+        completion_tokens_details?: unknown;
+        /**
+         * https://github.com/openai/openai-node/blob/master/src/resources/completions.ts#L173
+         */
+        prompt_tokens_details?: unknown;
+    };
+};
+
+export type CohereChatRequestInput = {
+    model: string;
+    messages: Array<{
+        role: string;
+        content: string | Array<{
+            type: string;
+            text: string;
+        } | {
+            type: string;
+            tool_call_id: string;
+            content: string;
+        }>;
+    } | {
+        role: string;
+        content?: string | Array<{
+            type: string;
+            text: string;
+        } | {
+            type: string;
+            tool_call_id: string;
+            content: string;
+        }>;
+        tool_calls?: Array<{
+            id: string;
+            type: string;
+            function: {
+                name: string;
+                arguments: string;
+            };
+        }>;
+    } | {
+        role: string;
+        content: string;
+    } | {
+        role: string;
+        tool_call_id: string;
+        content: string;
+    }>;
+    stream?: boolean;
+    temperature?: number;
+    max_tokens?: number;
+    tools?: Array<{
+        type: string;
+        function: {
+            name: string;
+            description?: string;
+            parameters?: {
+                type: string;
+                description?: string;
+                required?: Array<string>;
+                properties?: {
+                    [key: string]: unknown;
+                };
+            };
+        };
+    }>;
+    tool_choice?: 'REQUIRED' | 'NONE';
+    safety_mode?: 'CONTEXTUAL' | 'STRICT' | 'OFF';
+    response_format?: {
+        type: 'json_object' | 'text';
+        json_schema?: {
+            [key: string]: unknown;
+        };
+    };
+    frequency_penalty?: number;
+    presence_penalty?: number;
+    k?: number;
+    p?: number;
+    seed?: number;
+    stop_sequences?: Array<string>;
+    logprobs?: boolean;
+};
+
+export type CohereChatResponseInput = {
+    id: string;
+    message: {
+        role: string;
+        content?: Array<{
+            type: string;
+            text: string;
+        } | {
+            type: string;
+            tool_call_id: string;
+            content: string;
+        }>;
+        tool_calls?: Array<{
+            id: string;
+            type: string;
+            function: {
+                name: string;
+                arguments: string;
+            };
+        }>;
+    };
+    finish_reason: 'COMPLETE' | 'MAX_TOKENS' | 'STOP_SEQUENCE' | 'TOOL_CALL' | 'ERROR';
+    usage?: {
+        billed_units?: {
+            input_tokens?: number;
+            output_tokens?: number;
+        };
+        tokens?: {
+            input_tokens?: number;
+            output_tokens?: number;
+        };
+    };
+};
+
+export type MistralChatCompletionRequestInput = {
+    model: string;
+    /**
+     * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1186
+     */
+    messages: Array<{
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        }>;
+        role: 'developer';
+        name?: string;
+    } | {
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        }>;
+        role: 'system';
+        name?: string;
+    } | {
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        } | {
+            type: 'image_url';
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L765
+             */
+            image_url: {
+                url: string;
+                detail?: 'auto' | 'low' | 'high';
+            };
+        } | {
+            type: 'input_audio';
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L792
+             */
+            input_audio: {
+                data: string;
+                format: 'wav' | 'mp3';
+            };
+        } | {
+            type: 'file';
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L732
+             */
+            file: {
+                file_data?: string;
+                file_id?: string;
+                filename?: string;
+            };
+        }>;
+        role: 'user';
+        name?: string;
+    } | {
+        role: 'assistant';
+        audio?: {
+            id: string;
+        } | unknown;
+        content?: string | Array<{
+            type: 'text';
+            text: string;
+        }> | Array<{
+            type: 'refusal';
+            refusal: string;
+        }> | unknown;
+        /**
+         * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L431
+         */
+        function_call?: {
+            arguments: string;
+            name: string;
+        } | unknown;
+        name?: string;
+        refusal?: string | unknown;
+        /**
+         * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1197
+         */
+        tool_calls?: Array<{
+            id: string;
+            type: 'function';
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1165
+             */
+            function: {
+                arguments: string;
+                name: string;
+            };
+        } | {
+            id: string;
+            type: 'custom';
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1128
+             */
+            custom: {
+                input: string;
+                name: string;
+            };
+        }>;
+    } | {
+        role: 'tool';
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        } | {
+            type: 'image_url';
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L765
+             */
+            image_url: {
+                url: string;
+                detail?: 'auto' | 'low' | 'high';
+            };
+        }>;
+        tool_call_id: string;
+    } | {
+        role: 'function';
+        content: string | unknown;
+        name: string;
+    }>;
+    /**
+     *
+     * A function tool that can be used to generate a response.
+     *
+     * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1392
+     *
+     */
+    tools?: Array<{
+        type: 'function';
+        /**
+         * https://github.com/openai/openai-node/blob/master/src/resources/shared.ts#L174
+         */
+        function: {
+            name: string;
+            description?: string;
+            /**
+             *
+             * https://github.com/openai/openai-node/blob/master/src/resources/shared.ts#L217
+             *
+             * The parameters the functions accepts, described as a JSON Schema object. See the
+             * [guide](https://platform.openai.com/docs/guides/function-calling) for examples,
+             * and the [JSON Schema reference](https://json-schema.org/understanding-json-schema/) for
+             * documentation about the format.
+             *
+             * Omitting parameters defines a function with an empty parameter list.
+             *
+             */
+            parameters?: {
+                [key: string]: unknown;
+            };
+            strict?: boolean | unknown;
+        };
+    } | {
+        type: 'custom';
+        custom: {
+            /**
+             * The name of the custom tool, used to identify it in tool calls
+             */
+            name: string;
+            /**
+             * Optional description of the custom tool, used to provide more context
+             */
+            description?: string;
+            /**
+             * The input format for the custom tool. Default is unconstrained text.
+             */
+            format?: {
+                /**
+                 * Unconstrained text format. Always `text`
+                 */
+                type: 'text';
+            } | {
+                type: 'grammar';
+                /**
+                 * Your chosen grammar
+                 */
+                grammar: {
+                    /**
+                     * The grammar definition
+                     */
+                    definition: string;
+                    /**
+                     * The syntax of the grammar definition
+                     */
+                    syntax: 'lark' | 'regex';
+                };
+            };
+        };
+    }>;
+    /**
+     * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1405
+     */
+    tool_choice?: 'none' | 'auto' | 'required' | {
+        type: 'allowed_tools';
+        /**
+         * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1455
+         */
+        allowed_tools: {
+            /**
+             *
+             * Constrains the tools available to the model to a pre-defined set.
+             *
+             * auto allows the model to pick from among the allowed tools and generate a
+             * message.
+             *
+             * required requires the model to call one or more of the allowed tools.
+             *
+             */
+            mode: 'auto' | 'required';
+            /**
+             * A list of tool definitions that the model should be allowed to call
+             */
+            tools: Array<{
+                [key: string]: {
+                    type: 'function';
+                    /**
+                     * https://github.com/openai/openai-node/blob/master/src/resources/shared.ts#L174
+                     */
+                    function: {
+                        name: string;
+                        description?: string;
+                        /**
+                         *
+                         * https://github.com/openai/openai-node/blob/master/src/resources/shared.ts#L217
+                         *
+                         * The parameters the functions accepts, described as a JSON Schema object. See the
+                         * [guide](https://platform.openai.com/docs/guides/function-calling) for examples,
+                         * and the [JSON Schema reference](https://json-schema.org/understanding-json-schema/) for
+                         * documentation about the format.
+                         *
+                         * Omitting parameters defines a function with an empty parameter list.
+                         *
+                         */
+                        parameters?: {
+                            [key: string]: unknown;
+                        };
+                        strict?: boolean | unknown;
+                    };
+                };
+            }>;
+        };
+    } | {
+        type: 'function';
+        function: {
+            name: string;
+        };
+    } | {
+        type: 'custom';
+        custom: {
+            /**
+             * The name of the custom tool, used to identify it in tool calls
+             */
+            name: string;
+            /**
+             * Optional description of the custom tool, used to provide more context
+             */
+            description?: string;
+            /**
+             * The input format for the custom tool. Default is unconstrained text.
+             */
+            format?: {
+                /**
+                 * Unconstrained text format. Always `text`
+                 */
+                type: 'text';
+            } | {
+                type: 'grammar';
+                /**
+                 * Your chosen grammar
+                 */
+                grammar: {
+                    /**
+                     * The grammar definition
+                     */
+                    definition: string;
+                    /**
+                     * The syntax of the grammar definition
+                     */
+                    syntax: 'lark' | 'regex';
+                };
+            };
+        };
+    };
+    temperature?: number | unknown;
+    max_tokens?: number | unknown;
+    stream?: boolean | unknown;
+};
+
+export type MistralChatCompletionResponseInput = {
+    id: string;
+    choices: Array<{
+        finish_reason: 'stop' | 'length' | 'tool_calls' | 'content_filter' | 'function_call';
+        index: number;
+        logprobs: unknown;
+        /**
+         * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1000
+         */
+        message: {
+            content: string | unknown;
+            refusal?: string | unknown;
+            role: 'assistant';
+            annotations?: Array<unknown>;
+            audio?: unknown;
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L431
+             */
+            function_call?: {
+                arguments: string;
+                name: string;
+            } | unknown;
+            tool_calls?: Array<{
+                id: string;
+                type: 'function';
+                /**
+                 * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1165
+                 */
+                function: {
+                    arguments: string;
+                    name: string;
+                };
+            } | {
+                id: string;
+                type: 'custom';
+                /**
+                 * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1128
+                 */
+                custom: {
+                    input: string;
+                    name: string;
+                };
+            }> | unknown;
+        };
+    }>;
+    created: number;
+    model: string;
+    object: 'chat.completion';
+    server_tier?: string;
+    system_fingerprint?: string | unknown;
+    /**
+     * https://github.com/openai/openai-node/blob/master/src/resources/completions.ts#L113
+     */
+    usage?: {
+        completion_tokens: number;
+        prompt_tokens: number;
+        total_tokens: number;
+        /**
+         * https://github.com/openai/openai-node/blob/master/src/resources/completions.ts#L144
+         */
+        completion_tokens_details?: unknown;
+        /**
+         * https://github.com/openai/openai-node/blob/master/src/resources/completions.ts#L173
+         */
+        prompt_tokens_details?: unknown;
+    };
+    [key: string]: unknown | string | Array<{
+        finish_reason: 'stop' | 'length' | 'tool_calls' | 'content_filter' | 'function_call';
+        index: number;
+        logprobs: unknown;
+        /**
+         * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1000
+         */
+        message: {
+            content: string | unknown;
+            refusal?: string | unknown;
+            role: 'assistant';
+            annotations?: Array<unknown>;
+            audio?: unknown;
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L431
+             */
+            function_call?: {
+                arguments: string;
+                name: string;
+            } | unknown;
+            tool_calls?: Array<{
+                id: string;
+                type: 'function';
+                /**
+                 * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1165
+                 */
+                function: {
+                    arguments: string;
+                    name: string;
+                };
+            } | {
+                id: string;
+                type: 'custom';
+                /**
+                 * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1128
+                 */
+                custom: {
+                    input: string;
+                    name: string;
+                };
+            }> | unknown;
+        };
+    }> | number | 'chat.completion' | string | unknown | {
+        completion_tokens: number;
+        prompt_tokens: number;
+        total_tokens: number;
+        /**
+         * https://github.com/openai/openai-node/blob/master/src/resources/completions.ts#L144
+         */
+        completion_tokens_details?: unknown;
+        /**
+         * https://github.com/openai/openai-node/blob/master/src/resources/completions.ts#L173
+         */
+        prompt_tokens_details?: unknown;
+    } | undefined;
+};
+
+export type VllmChatCompletionRequestInput = {
+    model: string;
+    /**
+     * A message in the conversation
+     */
+    messages: Array<{
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        }>;
+        role: 'developer';
+        name?: string;
+    } | {
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        }>;
+        role: 'system';
+        name?: string;
+    } | {
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        } | {
+            type: 'image_url';
+            /**
+             * Image URL details
+             */
+            image_url: {
+                url: string;
+                detail?: 'auto' | 'low' | 'high';
+            };
+        } | {
+            type: 'input_audio';
+            /**
+             * Audio input details
+             */
+            input_audio: {
+                data: string;
+                format: 'wav' | 'mp3';
+            };
+        } | {
+            type: 'file';
+            /**
+             * File details
+             */
+            file: {
+                file_data?: string;
+                file_id?: string;
+                filename?: string;
+            };
+        }>;
+        role: 'user';
+        name?: string;
+    } | {
+        role: 'assistant';
+        audio?: {
+            id: string;
+        } | unknown;
+        content?: string | Array<{
+            type: 'text';
+            text: string;
+        }> | Array<{
+            type: 'refusal';
+            refusal: string;
+        }> | unknown;
+        function_call?: {
+            arguments: string;
+            name: string;
+        } | unknown;
+        name?: string;
+        refusal?: string | unknown;
+        /**
+         * A tool call in the assistant message
+         */
+        tool_calls?: Array<{
+            id: string;
+            type: 'function';
+            /**
+             * Function call details
+             */
+            function: {
+                arguments: string;
+                name: string;
+            };
+        } | {
+            id: string;
+            type: 'custom';
+            /**
+             * Custom tool call details
+             */
+            custom: {
+                input: string;
+                name: string;
+            };
+        }>;
+        reasoning?: string | unknown;
+    } | {
+        role: 'tool';
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        } | {
+            type: 'image_url';
+            /**
+             * Image URL details
+             */
+            image_url: {
+                url: string;
+                detail?: 'auto' | 'low' | 'high';
+            };
+        }>;
+        tool_call_id: string;
+    } | {
+        role: 'function';
+        content: string | unknown;
+        name: string;
+    }>;
+    /**
+     * A tool definition
+     */
+    tools?: Array<{
+        type: 'function';
+        /**
+         * A function definition for tool calling
+         */
+        function: {
+            name: string;
+            description?: string;
+            /**
+             *
+             * The parameters the functions accepts, described as a JSON Schema object.
+             * Omitting parameters defines a function with an empty parameter list.
+             *
+             */
+            parameters?: {
+                [key: string]: unknown;
+            };
+            strict?: boolean | unknown;
+        };
+    } | {
+        type: 'custom';
+        custom: {
+            /**
+             * The name of the custom tool
+             */
+            name: string;
+            /**
+             * Description of the tool
+             */
+            description?: string;
+            /**
+             * The input format for the custom tool
+             */
+            format?: {
+                /**
+                 * Unconstrained text format
+                 */
+                type: 'text';
+            } | {
+                type: 'grammar';
+                grammar: {
+                    /**
+                     * The grammar definition
+                     */
+                    definition: string;
+                    /**
+                     * The syntax of the grammar
+                     */
+                    syntax: 'lark' | 'regex';
+                };
+            };
+        };
+    }>;
+    /**
+     * Tool choice option
+     */
+    tool_choice?: 'none' | 'auto' | 'required' | {
+        type: 'allowed_tools';
+        /**
+         * Allowed tools configuration
+         */
+        allowed_tools: {
+            /**
+             *
+             * Constrains the tools available to the model.
+             * auto: allows the model to pick from allowed tools or generate a message.
+             * required: requires the model to call one or more of the allowed tools.
+             *
+             */
+            mode: 'auto' | 'required';
+            tools: Array<{
+                [key: string]: {
+                    type: 'function';
+                    /**
+                     * A function definition for tool calling
+                     */
+                    function: {
+                        name: string;
+                        description?: string;
+                        /**
+                         *
+                         * The parameters the functions accepts, described as a JSON Schema object.
+                         * Omitting parameters defines a function with an empty parameter list.
+                         *
+                         */
+                        parameters?: {
+                            [key: string]: unknown;
+                        };
+                        strict?: boolean | unknown;
+                    };
+                };
+            }>;
+        };
+    } | {
+        type: 'function';
+        function: {
+            name: string;
+        };
+    } | {
+        type: 'custom';
+        custom: {
+            /**
+             * The name of the custom tool
+             */
+            name: string;
+            /**
+             * Description of the tool
+             */
+            description?: string;
+            /**
+             * The input format for the custom tool
+             */
+            format?: {
+                /**
+                 * Unconstrained text format
+                 */
+                type: 'text';
+            } | {
+                type: 'grammar';
+                grammar: {
+                    /**
+                     * The grammar definition
+                     */
+                    definition: string;
+                    /**
+                     * The syntax of the grammar
+                     */
+                    syntax: 'lark' | 'regex';
+                };
+            };
+        };
+    };
+    temperature?: number | unknown;
+    max_tokens?: number | unknown;
+    stream?: boolean | unknown;
+    top_p?: number | unknown;
+    top_k?: number | unknown;
+    frequency_penalty?: number | unknown;
+    presence_penalty?: number | unknown;
+    repetition_penalty?: number | unknown;
+    stop?: string | Array<string>;
+    seed?: number | unknown;
+    n?: number | unknown;
+    best_of?: number | unknown;
+    logprobs?: boolean | unknown;
+    top_logprobs?: number | unknown;
+};
+
+export type VllmChatCompletionResponseInput = {
+    id: string;
+    choices: Array<{
+        finish_reason: 'stop' | 'length' | 'tool_calls' | 'content_filter' | 'function_call';
+        index: number;
+        logprobs: unknown;
+        /**
+         * The assistant message in the response
+         */
+        message: {
+            content: string | unknown;
+            refusal?: string | unknown;
+            role: 'assistant';
+            annotations?: Array<unknown>;
+            audio?: unknown;
+            function_call?: {
+                arguments: string;
+                name: string;
+            } | unknown;
+            /**
+             * A tool call in the assistant message
+             */
+            tool_calls?: Array<{
+                id: string;
+                type: 'function';
+                /**
+                 * Function call details
+                 */
+                function: {
+                    arguments: string;
+                    name: string;
+                };
+            } | {
+                id: string;
+                type: 'custom';
+                /**
+                 * Custom tool call details
+                 */
+                custom: {
+                    input: string;
+                    name: string;
+                };
+            }>;
+            reasoning?: string | unknown;
+        };
+    }>;
+    created: number;
+    model: string;
+    object: 'chat.completion';
+    system_fingerprint?: string | unknown;
+    /**
+     * Token usage statistics for the completion
+     */
+    usage?: {
+        completion_tokens: number;
+        prompt_tokens: number;
+        total_tokens: number;
+        completion_tokens_details?: unknown;
+        prompt_tokens_details?: unknown;
+    };
+};
+
+export type OllamaChatCompletionRequestInput = {
+    model: string;
+    /**
+     * A message in the conversation
+     */
+    messages: Array<{
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        }>;
+        role: 'developer';
+        name?: string;
+    } | {
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        }>;
+        role: 'system';
+        name?: string;
+    } | {
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        } | {
+            type: 'image_url';
+            /**
+             * Image URL details
+             */
+            image_url: {
+                url: string;
+                detail?: 'auto' | 'low' | 'high';
+            };
+        } | {
+            type: 'input_audio';
+            /**
+             * Audio input details
+             */
+            input_audio: {
+                data: string;
+                format: 'wav' | 'mp3';
+            };
+        } | {
+            type: 'file';
+            /**
+             * File details
+             */
+            file: {
+                file_data?: string;
+                file_id?: string;
+                filename?: string;
+            };
+        }>;
+        role: 'user';
+        name?: string;
+    } | {
+        role: 'assistant';
+        audio?: {
+            id: string;
+        } | unknown;
+        content?: string | Array<{
+            type: 'text';
+            text: string;
+        }> | Array<{
+            type: 'refusal';
+            refusal: string;
+        }> | unknown;
+        function_call?: {
+            arguments: string;
+            name: string;
+        } | unknown;
+        name?: string;
+        refusal?: string | unknown;
+        /**
+         * A tool call in the assistant message
+         */
+        tool_calls?: Array<{
+            id: string;
+            type: 'function';
+            /**
+             * Function call details
+             */
+            function: {
+                arguments: string;
+                name: string;
+            };
+        } | {
+            id: string;
+            type: 'custom';
+            /**
+             * Custom tool call details
+             */
+            custom: {
+                input: string;
+                name: string;
+            };
+        }>;
+    } | {
+        role: 'tool';
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        } | {
+            type: 'image_url';
+            /**
+             * Image URL details
+             */
+            image_url: {
+                url: string;
+                detail?: 'auto' | 'low' | 'high';
+            };
+        }>;
+        tool_call_id: string;
+    } | {
+        role: 'function';
+        content: string | unknown;
+        name: string;
+    }>;
+    /**
+     * A tool definition
+     */
+    tools?: Array<{
+        type: 'function';
+        /**
+         * A function definition for tool calling
+         */
+        function: {
+            name: string;
+            description?: string;
+            /**
+             *
+             * The parameters the functions accepts, described as a JSON Schema object.
+             * Omitting parameters defines a function with an empty parameter list.
+             *
+             */
+            parameters?: {
+                [key: string]: unknown;
+            };
+            strict?: boolean | unknown;
+        };
+    } | {
+        type: 'custom';
+        custom: {
+            /**
+             * The name of the custom tool
+             */
+            name: string;
+            /**
+             * Description of the tool
+             */
+            description?: string;
+            /**
+             * The input format for the custom tool
+             */
+            format?: {
+                /**
+                 * Unconstrained text format
+                 */
+                type: 'text';
+            } | {
+                type: 'grammar';
+                grammar: {
+                    /**
+                     * The grammar definition
+                     */
+                    definition: string;
+                    /**
+                     * The syntax of the grammar
+                     */
+                    syntax: 'lark' | 'regex';
+                };
+            };
+        };
+    }>;
+    /**
+     * Tool choice option
+     */
+    tool_choice?: 'none' | 'auto' | 'required' | {
+        type: 'allowed_tools';
+        /**
+         * Allowed tools configuration
+         */
+        allowed_tools: {
+            /**
+             *
+             * Constrains the tools available to the model.
+             * auto: allows the model to pick from allowed tools or generate a message.
+             * required: requires the model to call one or more of the allowed tools.
+             *
+             */
+            mode: 'auto' | 'required';
+            tools: Array<{
+                [key: string]: {
+                    type: 'function';
+                    /**
+                     * A function definition for tool calling
+                     */
+                    function: {
+                        name: string;
+                        description?: string;
+                        /**
+                         *
+                         * The parameters the functions accepts, described as a JSON Schema object.
+                         * Omitting parameters defines a function with an empty parameter list.
+                         *
+                         */
+                        parameters?: {
+                            [key: string]: unknown;
+                        };
+                        strict?: boolean | unknown;
+                    };
+                };
+            }>;
+        };
+    } | {
+        type: 'function';
+        function: {
+            name: string;
+        };
+    } | {
+        type: 'custom';
+        custom: {
+            /**
+             * The name of the custom tool
+             */
+            name: string;
+            /**
+             * Description of the tool
+             */
+            description?: string;
+            /**
+             * The input format for the custom tool
+             */
+            format?: {
+                /**
+                 * Unconstrained text format
+                 */
+                type: 'text';
+            } | {
+                type: 'grammar';
+                grammar: {
+                    /**
+                     * The grammar definition
+                     */
+                    definition: string;
+                    /**
+                     * The syntax of the grammar
+                     */
+                    syntax: 'lark' | 'regex';
+                };
+            };
+        };
+    };
+    temperature?: number | unknown;
+    max_tokens?: number | unknown;
+    stream?: boolean | unknown;
+    top_p?: number | unknown;
+    frequency_penalty?: number | unknown;
+    presence_penalty?: number | unknown;
+    stop?: string | Array<string>;
+    seed?: number | unknown;
+    n?: number | unknown;
+};
+
+export type OllamaChatCompletionResponseInput = {
+    id: string;
+    choices: Array<{
+        finish_reason: 'stop' | 'length' | 'tool_calls' | 'content_filter' | 'function_call';
+        index: number;
+        logprobs: unknown;
+        /**
+         * The assistant message in the response
+         */
+        message: {
+            content: string | unknown;
+            refusal?: string | unknown;
+            role: 'assistant';
+            annotations?: Array<unknown>;
+            audio?: unknown;
+            function_call?: {
+                arguments: string;
+                name: string;
+            } | unknown;
+            /**
+             * A tool call in the assistant message
+             */
+            tool_calls?: Array<{
+                id: string;
+                type: 'function';
+                /**
+                 * Function call details
+                 */
+                function: {
+                    arguments: string;
+                    name: string;
+                };
+            } | {
+                id: string;
+                type: 'custom';
+                /**
+                 * Custom tool call details
+                 */
+                custom: {
+                    input: string;
+                    name: string;
+                };
+            }>;
+        };
+    }>;
+    created: number;
+    model: string;
+    object: 'chat.completion';
+    system_fingerprint?: string | unknown;
+    /**
+     * Token usage statistics for the completion
+     */
+    usage?: {
+        completion_tokens: number;
+        prompt_tokens: number;
+        total_tokens: number;
+        completion_tokens_details?: unknown;
+        prompt_tokens_details?: unknown;
+    };
+};
+
+export type ZhipuaiChatCompletionRequestInput = {
+    model: string;
+    /**
+     * https://docs.z.ai/api-reference/llm/chat-completion#body
+     */
+    messages: Array<{
+        role: 'system';
+        content: string;
+        name?: string;
+    } | {
+        role: 'user';
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        } | {
+            type: 'image_url';
+            /**
+             * https://docs.z.ai/api-reference/llm/chat-completion#body
+             */
+            image_url: {
+                url: string;
+                detail?: 'auto' | 'low' | 'high';
+            };
+        }>;
+        name?: string;
+    } | {
+        role: 'assistant';
+        content?: string | unknown;
+        name?: string;
+        tool_calls?: Array<{
+            id: string;
+            type: 'function';
+            /**
+             * https://docs.z.ai/api-reference/llm/chat-completion#response
+             */
+            function: {
+                arguments: string;
+                name: string;
+            };
+        }>;
+        function_call?: {
+            arguments: string;
+            name: string;
+        };
+    } | {
+        role: 'tool';
+        content: string;
+        tool_call_id: string;
+    } | {
+        role: 'function';
+        content: string;
+        name: string;
+    }>;
+    tools?: Array<{
+        type: 'function';
+        /**
+         * https://docs.z.ai/api-reference/llm/chat-completion#body
+         */
+        function: {
+            name: string;
+            description?: string;
+            /**
+             *
+             * https://docs.z.ai/api-reference/llm/chat-completion#body
+             *
+             * The parameters the functions accepts, described as a JSON Schema object. See the
+             * [JSON Schema reference](https://json-schema.org/understanding-json-schema/) for
+             * documentation about the format.
+             *
+             * Omitting parameters defines a function with an empty parameter list.
+             *
+             */
+            parameters?: {
+                [key: string]: unknown;
+            };
+            strict?: boolean | unknown;
+        };
+    }>;
+    /**
+     * https://docs.z.ai/api-reference/llm/chat-completion#body
+     */
+    tool_choice?: 'auto' | {
+        type: 'function';
+        function: {
+            name: string;
+        };
+    };
+    request_id?: string;
+    do_sample?: boolean;
+    stream?: boolean;
+    thinking?: {
+        type: 'enabled' | 'disabled';
+        clear_thinking?: boolean;
+    };
+    temperature?: number | unknown;
+    top_p?: number | unknown;
+    max_tokens?: number | unknown;
+    tool_stream?: boolean;
+    stop?: Array<string>;
+    response_format?: {
+        type: 'text' | 'json_object';
+    };
+    user_id?: string;
+};
+
+export type ZhipuaiChatCompletionResponseInput = {
+    id: string;
+    request_id?: string;
+    choices: Array<{
+        finish_reason: 'stop' | 'length' | 'tool_calls' | 'sensitive' | 'network_error';
+        index: number;
+        logprobs: unknown;
+        /**
+         * https://docs.z.ai/api-reference/llm/chat-completion#response
+         */
+        message: {
+            content: string | unknown;
+            role: 'assistant';
+            reasoning_content?: string;
+            tool_calls?: Array<{
+                id: string;
+                type: 'function';
+                /**
+                 * https://docs.z.ai/api-reference/llm/chat-completion#response
+                 */
+                function: {
+                    arguments: string;
+                    name: string;
+                };
+            }>;
+            function_call?: {
+                arguments: string;
+                name: string;
+            } | unknown;
+        };
+    }>;
+    created: number;
+    model: string;
+    object: 'chat.completion';
+    system_fingerprint?: string | unknown;
+    /**
+     * https://docs.z.ai/api-reference/llm/chat-completion#response
+     */
+    usage?: {
+        completion_tokens: number;
+        prompt_tokens: number;
+        total_tokens: number;
+        /**
+         * https://docs.z.ai/api-reference/llm/chat-completion#response
+         */
+        prompt_tokens_details?: {
+            cached_tokens: number;
+        };
+    };
+    /**
+     * https://docs.z.ai/api-reference/llm/chat-completion#response
+     */
+    web_search?: Array<{
+        title: string;
+        content: string;
+        link: string;
+        media: string;
+        icon: string;
+        refer: string;
+        publish_date: string;
+    }>;
+};
+
+export type OpenAiChatCompletionRequest = {
+    model: string;
+    /**
+     * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1186
+     */
+    messages: Array<{
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        }>;
+        role: 'developer';
+        name?: string;
+    } | {
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        }>;
+        role: 'system';
+        name?: string;
+    } | {
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        } | {
+            type: 'image_url';
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L765
+             */
+            image_url: {
+                url: string;
+                detail?: 'auto' | 'low' | 'high';
+            };
+        } | {
+            type: 'input_audio';
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L792
+             */
+            input_audio: {
+                data: string;
+                format: 'wav' | 'mp3';
+            };
+        } | {
+            type: 'file';
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L732
+             */
+            file: {
+                file_data?: string;
+                file_id?: string;
+                filename?: string;
+            };
+        }>;
+        role: 'user';
+        name?: string;
+    } | {
+        role: 'assistant';
+        audio?: {
+            id: string;
+        } | unknown;
+        content?: string | Array<{
+            type: 'text';
+            text: string;
+        }> | Array<{
+            type: 'refusal';
+            refusal: string;
+        }> | unknown;
+        /**
+         * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L431
+         */
+        function_call?: {
+            arguments: string;
+            name: string;
+        } | unknown;
+        name?: string;
+        refusal?: string | unknown;
+        /**
+         * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1197
+         */
+        tool_calls?: Array<{
+            id: string;
+            type: 'function';
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1165
+             */
+            function: {
+                arguments: string;
+                name: string;
+            };
+        } | {
+            id: string;
+            type: 'custom';
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1128
+             */
+            custom: {
+                input: string;
+                name: string;
+            };
+        }>;
+    } | {
+        role: 'tool';
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        } | {
+            type: 'image_url';
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L765
+             */
+            image_url: {
+                url: string;
+                detail?: 'auto' | 'low' | 'high';
+            };
         }>;
         tool_call_id: string;
     } | {
@@ -1671,9 +3392,6 @@ export type OpenAiChatCompletionResponse = {
                 arguments: string;
                 name: string;
             } | unknown;
-            /**
-             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1197
-             */
             tool_calls?: Array<{
                 id: string;
                 type: 'function';
@@ -1694,7 +3412,7 @@ export type OpenAiChatCompletionResponse = {
                     input: string;
                     name: string;
                 };
-            }>;
+            }> | unknown;
         };
     }>;
     created: number;
@@ -2612,6 +4330,14 @@ export type AnthropicMessagesRequest = {
             cache_control?: unknown;
             citations?: Array<unknown> | unknown;
         } | {
+            type: 'image';
+            source: {
+                type: 'base64';
+                media_type: string;
+                data: string;
+            };
+            cache_control?: unknown;
+        } | {
             id: string;
             input: unknown;
             name: string;
@@ -2626,6 +4352,14 @@ export type AnthropicMessagesRequest = {
                 type: 'text';
                 cache_control?: unknown;
                 citations?: Array<unknown> | unknown;
+            } | {
+                type: 'image';
+                source: {
+                    type: 'base64';
+                    media_type: string;
+                    data: string;
+                };
+                cache_control?: unknown;
             }>;
             is_error?: boolean;
         }>;
@@ -2729,11 +4463,1701 @@ export type AnthropicMessagesResponse = {
     };
 };
 
-export type WebSocketMessage = {
-    type: 'hello-world';
-    payload: {
-        [key: string]: never;
+export type CerebrasChatCompletionRequest = {
+    model: string;
+    /**
+     * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1186
+     */
+    messages: Array<{
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        }>;
+        role: 'developer';
+        name?: string;
+    } | {
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        }>;
+        role: 'system';
+        name?: string;
+    } | {
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        } | {
+            type: 'image_url';
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L765
+             */
+            image_url: {
+                url: string;
+                detail?: 'auto' | 'low' | 'high';
+            };
+        } | {
+            type: 'input_audio';
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L792
+             */
+            input_audio: {
+                data: string;
+                format: 'wav' | 'mp3';
+            };
+        } | {
+            type: 'file';
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L732
+             */
+            file: {
+                file_data?: string;
+                file_id?: string;
+                filename?: string;
+            };
+        }>;
+        role: 'user';
+        name?: string;
+    } | {
+        role: 'assistant';
+        audio?: {
+            id: string;
+        } | unknown;
+        content?: string | Array<{
+            type: 'text';
+            text: string;
+        }> | Array<{
+            type: 'refusal';
+            refusal: string;
+        }> | unknown;
+        /**
+         * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L431
+         */
+        function_call?: {
+            arguments: string;
+            name: string;
+        } | unknown;
+        name?: string;
+        refusal?: string | unknown;
+        /**
+         * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1197
+         */
+        tool_calls?: Array<{
+            id: string;
+            type: 'function';
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1165
+             */
+            function: {
+                arguments: string;
+                name: string;
+            };
+        } | {
+            id: string;
+            type: 'custom';
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1128
+             */
+            custom: {
+                input: string;
+                name: string;
+            };
+        }>;
+    } | {
+        role: 'tool';
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        } | {
+            type: 'image_url';
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L765
+             */
+            image_url: {
+                url: string;
+                detail?: 'auto' | 'low' | 'high';
+            };
+        }>;
+        tool_call_id: string;
+    } | {
+        role: 'function';
+        content: string | unknown;
+        name: string;
+    }>;
+    /**
+     *
+     * A function tool that can be used to generate a response.
+     *
+     * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1392
+     *
+     */
+    tools?: Array<{
+        type: 'function';
+        /**
+         * https://github.com/openai/openai-node/blob/master/src/resources/shared.ts#L174
+         */
+        function: {
+            name: string;
+            description?: string;
+            /**
+             *
+             * https://github.com/openai/openai-node/blob/master/src/resources/shared.ts#L217
+             *
+             * The parameters the functions accepts, described as a JSON Schema object. See the
+             * [guide](https://platform.openai.com/docs/guides/function-calling) for examples,
+             * and the [JSON Schema reference](https://json-schema.org/understanding-json-schema/) for
+             * documentation about the format.
+             *
+             * Omitting parameters defines a function with an empty parameter list.
+             *
+             */
+            parameters?: {
+                [key: string]: unknown;
+            };
+            strict?: boolean | unknown;
+        };
+    } | {
+        type: 'custom';
+        custom: {
+            /**
+             * The name of the custom tool, used to identify it in tool calls
+             */
+            name: string;
+            /**
+             * Optional description of the custom tool, used to provide more context
+             */
+            description?: string;
+            /**
+             * The input format for the custom tool. Default is unconstrained text.
+             */
+            format?: {
+                /**
+                 * Unconstrained text format. Always `text`
+                 */
+                type: 'text';
+            } | {
+                type: 'grammar';
+                /**
+                 * Your chosen grammar
+                 */
+                grammar: {
+                    /**
+                     * The grammar definition
+                     */
+                    definition: string;
+                    /**
+                     * The syntax of the grammar definition
+                     */
+                    syntax: 'lark' | 'regex';
+                };
+            };
+        };
+    }>;
+    /**
+     * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1405
+     */
+    tool_choice?: 'none' | 'auto' | 'required' | {
+        type: 'allowed_tools';
+        /**
+         * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1455
+         */
+        allowed_tools: {
+            /**
+             *
+             * Constrains the tools available to the model to a pre-defined set.
+             *
+             * auto allows the model to pick from among the allowed tools and generate a
+             * message.
+             *
+             * required requires the model to call one or more of the allowed tools.
+             *
+             */
+            mode: 'auto' | 'required';
+            /**
+             * A list of tool definitions that the model should be allowed to call
+             */
+            tools: Array<{
+                [key: string]: {
+                    type: 'function';
+                    /**
+                     * https://github.com/openai/openai-node/blob/master/src/resources/shared.ts#L174
+                     */
+                    function: {
+                        name: string;
+                        description?: string;
+                        /**
+                         *
+                         * https://github.com/openai/openai-node/blob/master/src/resources/shared.ts#L217
+                         *
+                         * The parameters the functions accepts, described as a JSON Schema object. See the
+                         * [guide](https://platform.openai.com/docs/guides/function-calling) for examples,
+                         * and the [JSON Schema reference](https://json-schema.org/understanding-json-schema/) for
+                         * documentation about the format.
+                         *
+                         * Omitting parameters defines a function with an empty parameter list.
+                         *
+                         */
+                        parameters?: {
+                            [key: string]: unknown;
+                        };
+                        strict?: boolean | unknown;
+                    };
+                };
+            }>;
+        };
+    } | {
+        type: 'function';
+        function: {
+            name: string;
+        };
+    } | {
+        type: 'custom';
+        custom: {
+            /**
+             * The name of the custom tool, used to identify it in tool calls
+             */
+            name: string;
+            /**
+             * Optional description of the custom tool, used to provide more context
+             */
+            description?: string;
+            /**
+             * The input format for the custom tool. Default is unconstrained text.
+             */
+            format?: {
+                /**
+                 * Unconstrained text format. Always `text`
+                 */
+                type: 'text';
+            } | {
+                type: 'grammar';
+                /**
+                 * Your chosen grammar
+                 */
+                grammar: {
+                    /**
+                     * The grammar definition
+                     */
+                    definition: string;
+                    /**
+                     * The syntax of the grammar definition
+                     */
+                    syntax: 'lark' | 'regex';
+                };
+            };
+        };
     };
+    temperature?: number | unknown;
+    max_tokens?: number | unknown;
+    stream?: boolean | unknown;
+};
+
+export type CerebrasChatCompletionResponse = {
+    id: string;
+    choices: Array<{
+        finish_reason: 'stop' | 'length' | 'tool_calls' | 'content_filter' | 'function_call';
+        index: number;
+        logprobs: unknown;
+        /**
+         * https://github.com/Cerebras/cerebras-cloud-sdk-node/blob/main/src/resources/chat/completions.ts
+         */
+        message: {
+            content?: string | unknown;
+            refusal?: string | unknown;
+            role: 'assistant';
+            annotations?: Array<unknown>;
+            audio?: unknown;
+            function_call?: {
+                arguments: string;
+                name: string;
+            } | unknown;
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1197
+             */
+            tool_calls?: Array<{
+                id: string;
+                type: 'function';
+                /**
+                 * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1165
+                 */
+                function: {
+                    arguments: string;
+                    name: string;
+                };
+            } | {
+                id: string;
+                type: 'custom';
+                /**
+                 * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1128
+                 */
+                custom: {
+                    input: string;
+                    name: string;
+                };
+            }>;
+        };
+    }>;
+    created: number;
+    model: string;
+    object: 'chat.completion';
+    server_tier?: string;
+    system_fingerprint?: string | unknown;
+    /**
+     * https://github.com/openai/openai-node/blob/master/src/resources/completions.ts#L113
+     */
+    usage?: {
+        completion_tokens: number;
+        prompt_tokens: number;
+        total_tokens: number;
+        /**
+         * https://github.com/openai/openai-node/blob/master/src/resources/completions.ts#L144
+         */
+        completion_tokens_details?: unknown;
+        /**
+         * https://github.com/openai/openai-node/blob/master/src/resources/completions.ts#L173
+         */
+        prompt_tokens_details?: unknown;
+    };
+};
+
+export type CohereChatRequest = {
+    model: string;
+    messages: Array<{
+        role: string;
+        content: string | Array<{
+            type: string;
+            text: string;
+        } | {
+            type: string;
+            tool_call_id: string;
+            content: string;
+        }>;
+    } | {
+        role: string;
+        content?: string | Array<{
+            type: string;
+            text: string;
+        } | {
+            type: string;
+            tool_call_id: string;
+            content: string;
+        }>;
+        tool_calls?: Array<{
+            id: string;
+            type: string;
+            function: {
+                name: string;
+                arguments: string;
+            };
+        }>;
+    } | {
+        role: string;
+        content: string;
+    } | {
+        role: string;
+        tool_call_id: string;
+        content: string;
+    }>;
+    stream?: boolean;
+    temperature?: number;
+    max_tokens?: number;
+    tools?: Array<{
+        type: string;
+        function: {
+            name: string;
+            description?: string;
+            parameters?: {
+                type: string;
+                description?: string;
+                required?: Array<string>;
+                properties?: {
+                    [key: string]: unknown;
+                };
+            };
+        };
+    }>;
+    tool_choice?: 'REQUIRED' | 'NONE';
+    safety_mode?: 'CONTEXTUAL' | 'STRICT' | 'OFF';
+    response_format?: {
+        type: 'json_object' | 'text';
+        json_schema?: {
+            [key: string]: unknown;
+        };
+    };
+    frequency_penalty?: number;
+    presence_penalty?: number;
+    k?: number;
+    p?: number;
+    seed?: number;
+    stop_sequences?: Array<string>;
+    logprobs?: boolean;
+};
+
+export type CohereChatResponse = {
+    id: string;
+    message: {
+        role: string;
+        content?: Array<{
+            type: string;
+            text: string;
+        } | {
+            type: string;
+            tool_call_id: string;
+            content: string;
+        }>;
+        tool_calls?: Array<{
+            id: string;
+            type: string;
+            function: {
+                name: string;
+                arguments: string;
+            };
+        }>;
+    };
+    finish_reason: 'COMPLETE' | 'MAX_TOKENS' | 'STOP_SEQUENCE' | 'TOOL_CALL' | 'ERROR';
+    usage?: {
+        billed_units?: {
+            input_tokens?: number;
+            output_tokens?: number;
+        };
+        tokens?: {
+            input_tokens?: number;
+            output_tokens?: number;
+        };
+    };
+};
+
+export type MistralChatCompletionRequest = {
+    model: string;
+    /**
+     * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1186
+     */
+    messages: Array<{
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        }>;
+        role: 'developer';
+        name?: string;
+    } | {
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        }>;
+        role: 'system';
+        name?: string;
+    } | {
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        } | {
+            type: 'image_url';
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L765
+             */
+            image_url: {
+                url: string;
+                detail?: 'auto' | 'low' | 'high';
+            };
+        } | {
+            type: 'input_audio';
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L792
+             */
+            input_audio: {
+                data: string;
+                format: 'wav' | 'mp3';
+            };
+        } | {
+            type: 'file';
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L732
+             */
+            file: {
+                file_data?: string;
+                file_id?: string;
+                filename?: string;
+            };
+        }>;
+        role: 'user';
+        name?: string;
+    } | {
+        role: 'assistant';
+        audio?: {
+            id: string;
+        } | unknown;
+        content?: string | Array<{
+            type: 'text';
+            text: string;
+        }> | Array<{
+            type: 'refusal';
+            refusal: string;
+        }> | unknown;
+        /**
+         * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L431
+         */
+        function_call?: {
+            arguments: string;
+            name: string;
+        } | unknown;
+        name?: string;
+        refusal?: string | unknown;
+        /**
+         * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1197
+         */
+        tool_calls?: Array<{
+            id: string;
+            type: 'function';
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1165
+             */
+            function: {
+                arguments: string;
+                name: string;
+            };
+        } | {
+            id: string;
+            type: 'custom';
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1128
+             */
+            custom: {
+                input: string;
+                name: string;
+            };
+        }>;
+    } | {
+        role: 'tool';
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        } | {
+            type: 'image_url';
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L765
+             */
+            image_url: {
+                url: string;
+                detail?: 'auto' | 'low' | 'high';
+            };
+        }>;
+        tool_call_id: string;
+    } | {
+        role: 'function';
+        content: string | unknown;
+        name: string;
+    }>;
+    /**
+     *
+     * A function tool that can be used to generate a response.
+     *
+     * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1392
+     *
+     */
+    tools?: Array<{
+        type: 'function';
+        /**
+         * https://github.com/openai/openai-node/blob/master/src/resources/shared.ts#L174
+         */
+        function: {
+            name: string;
+            description?: string;
+            /**
+             *
+             * https://github.com/openai/openai-node/blob/master/src/resources/shared.ts#L217
+             *
+             * The parameters the functions accepts, described as a JSON Schema object. See the
+             * [guide](https://platform.openai.com/docs/guides/function-calling) for examples,
+             * and the [JSON Schema reference](https://json-schema.org/understanding-json-schema/) for
+             * documentation about the format.
+             *
+             * Omitting parameters defines a function with an empty parameter list.
+             *
+             */
+            parameters?: {
+                [key: string]: unknown;
+            };
+            strict?: boolean | unknown;
+        };
+    } | {
+        type: 'custom';
+        custom: {
+            /**
+             * The name of the custom tool, used to identify it in tool calls
+             */
+            name: string;
+            /**
+             * Optional description of the custom tool, used to provide more context
+             */
+            description?: string;
+            /**
+             * The input format for the custom tool. Default is unconstrained text.
+             */
+            format?: {
+                /**
+                 * Unconstrained text format. Always `text`
+                 */
+                type: 'text';
+            } | {
+                type: 'grammar';
+                /**
+                 * Your chosen grammar
+                 */
+                grammar: {
+                    /**
+                     * The grammar definition
+                     */
+                    definition: string;
+                    /**
+                     * The syntax of the grammar definition
+                     */
+                    syntax: 'lark' | 'regex';
+                };
+            };
+        };
+    }>;
+    /**
+     * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1405
+     */
+    tool_choice?: 'none' | 'auto' | 'required' | {
+        type: 'allowed_tools';
+        /**
+         * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1455
+         */
+        allowed_tools: {
+            /**
+             *
+             * Constrains the tools available to the model to a pre-defined set.
+             *
+             * auto allows the model to pick from among the allowed tools and generate a
+             * message.
+             *
+             * required requires the model to call one or more of the allowed tools.
+             *
+             */
+            mode: 'auto' | 'required';
+            /**
+             * A list of tool definitions that the model should be allowed to call
+             */
+            tools: Array<{
+                [key: string]: {
+                    type: 'function';
+                    /**
+                     * https://github.com/openai/openai-node/blob/master/src/resources/shared.ts#L174
+                     */
+                    function: {
+                        name: string;
+                        description?: string;
+                        /**
+                         *
+                         * https://github.com/openai/openai-node/blob/master/src/resources/shared.ts#L217
+                         *
+                         * The parameters the functions accepts, described as a JSON Schema object. See the
+                         * [guide](https://platform.openai.com/docs/guides/function-calling) for examples,
+                         * and the [JSON Schema reference](https://json-schema.org/understanding-json-schema/) for
+                         * documentation about the format.
+                         *
+                         * Omitting parameters defines a function with an empty parameter list.
+                         *
+                         */
+                        parameters?: {
+                            [key: string]: unknown;
+                        };
+                        strict?: boolean | unknown;
+                    };
+                };
+            }>;
+        };
+    } | {
+        type: 'function';
+        function: {
+            name: string;
+        };
+    } | {
+        type: 'custom';
+        custom: {
+            /**
+             * The name of the custom tool, used to identify it in tool calls
+             */
+            name: string;
+            /**
+             * Optional description of the custom tool, used to provide more context
+             */
+            description?: string;
+            /**
+             * The input format for the custom tool. Default is unconstrained text.
+             */
+            format?: {
+                /**
+                 * Unconstrained text format. Always `text`
+                 */
+                type: 'text';
+            } | {
+                type: 'grammar';
+                /**
+                 * Your chosen grammar
+                 */
+                grammar: {
+                    /**
+                     * The grammar definition
+                     */
+                    definition: string;
+                    /**
+                     * The syntax of the grammar definition
+                     */
+                    syntax: 'lark' | 'regex';
+                };
+            };
+        };
+    };
+    temperature?: number | unknown;
+    max_tokens?: number | unknown;
+    stream?: boolean | unknown;
+};
+
+export type MistralChatCompletionResponse = {
+    id: string;
+    choices: Array<{
+        finish_reason: 'stop' | 'length' | 'tool_calls' | 'content_filter' | 'function_call';
+        index: number;
+        logprobs: unknown;
+        /**
+         * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1000
+         */
+        message: {
+            content: string | unknown;
+            refusal?: string | unknown;
+            role: 'assistant';
+            annotations?: Array<unknown>;
+            audio?: unknown;
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L431
+             */
+            function_call?: {
+                arguments: string;
+                name: string;
+            } | unknown;
+            tool_calls?: Array<{
+                id: string;
+                type: 'function';
+                /**
+                 * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1165
+                 */
+                function: {
+                    arguments: string;
+                    name: string;
+                };
+            } | {
+                id: string;
+                type: 'custom';
+                /**
+                 * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1128
+                 */
+                custom: {
+                    input: string;
+                    name: string;
+                };
+            }> | unknown;
+        };
+    }>;
+    created: number;
+    model: string;
+    object: 'chat.completion';
+    server_tier?: string;
+    system_fingerprint?: string | unknown;
+    /**
+     * https://github.com/openai/openai-node/blob/master/src/resources/completions.ts#L113
+     */
+    usage?: {
+        completion_tokens: number;
+        prompt_tokens: number;
+        total_tokens: number;
+        /**
+         * https://github.com/openai/openai-node/blob/master/src/resources/completions.ts#L144
+         */
+        completion_tokens_details?: unknown;
+        /**
+         * https://github.com/openai/openai-node/blob/master/src/resources/completions.ts#L173
+         */
+        prompt_tokens_details?: unknown;
+    };
+    [key: string]: unknown | string | Array<{
+        finish_reason: 'stop' | 'length' | 'tool_calls' | 'content_filter' | 'function_call';
+        index: number;
+        logprobs: unknown;
+        /**
+         * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1000
+         */
+        message: {
+            content: string | unknown;
+            refusal?: string | unknown;
+            role: 'assistant';
+            annotations?: Array<unknown>;
+            audio?: unknown;
+            /**
+             * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L431
+             */
+            function_call?: {
+                arguments: string;
+                name: string;
+            } | unknown;
+            tool_calls?: Array<{
+                id: string;
+                type: 'function';
+                /**
+                 * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1165
+                 */
+                function: {
+                    arguments: string;
+                    name: string;
+                };
+            } | {
+                id: string;
+                type: 'custom';
+                /**
+                 * https://github.com/openai/openai-node/blob/v6.0.0/src/resources/chat/completions/completions.ts#L1128
+                 */
+                custom: {
+                    input: string;
+                    name: string;
+                };
+            }> | unknown;
+        };
+    }> | number | 'chat.completion' | string | unknown | {
+        completion_tokens: number;
+        prompt_tokens: number;
+        total_tokens: number;
+        /**
+         * https://github.com/openai/openai-node/blob/master/src/resources/completions.ts#L144
+         */
+        completion_tokens_details?: unknown;
+        /**
+         * https://github.com/openai/openai-node/blob/master/src/resources/completions.ts#L173
+         */
+        prompt_tokens_details?: unknown;
+    } | undefined;
+};
+
+export type VllmChatCompletionRequest = {
+    model: string;
+    /**
+     * A message in the conversation
+     */
+    messages: Array<{
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        }>;
+        role: 'developer';
+        name?: string;
+    } | {
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        }>;
+        role: 'system';
+        name?: string;
+    } | {
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        } | {
+            type: 'image_url';
+            /**
+             * Image URL details
+             */
+            image_url: {
+                url: string;
+                detail?: 'auto' | 'low' | 'high';
+            };
+        } | {
+            type: 'input_audio';
+            /**
+             * Audio input details
+             */
+            input_audio: {
+                data: string;
+                format: 'wav' | 'mp3';
+            };
+        } | {
+            type: 'file';
+            /**
+             * File details
+             */
+            file: {
+                file_data?: string;
+                file_id?: string;
+                filename?: string;
+            };
+        }>;
+        role: 'user';
+        name?: string;
+    } | {
+        role: 'assistant';
+        audio?: {
+            id: string;
+        } | unknown;
+        content?: string | Array<{
+            type: 'text';
+            text: string;
+        }> | Array<{
+            type: 'refusal';
+            refusal: string;
+        }> | unknown;
+        function_call?: {
+            arguments: string;
+            name: string;
+        } | unknown;
+        name?: string;
+        refusal?: string | unknown;
+        /**
+         * A tool call in the assistant message
+         */
+        tool_calls?: Array<{
+            id: string;
+            type: 'function';
+            /**
+             * Function call details
+             */
+            function: {
+                arguments: string;
+                name: string;
+            };
+        } | {
+            id: string;
+            type: 'custom';
+            /**
+             * Custom tool call details
+             */
+            custom: {
+                input: string;
+                name: string;
+            };
+        }>;
+        reasoning?: string | unknown;
+    } | {
+        role: 'tool';
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        } | {
+            type: 'image_url';
+            /**
+             * Image URL details
+             */
+            image_url: {
+                url: string;
+                detail?: 'auto' | 'low' | 'high';
+            };
+        }>;
+        tool_call_id: string;
+    } | {
+        role: 'function';
+        content: string | unknown;
+        name: string;
+    }>;
+    /**
+     * A tool definition
+     */
+    tools?: Array<{
+        type: 'function';
+        /**
+         * A function definition for tool calling
+         */
+        function: {
+            name: string;
+            description?: string;
+            /**
+             *
+             * The parameters the functions accepts, described as a JSON Schema object.
+             * Omitting parameters defines a function with an empty parameter list.
+             *
+             */
+            parameters?: {
+                [key: string]: unknown;
+            };
+            strict?: boolean | unknown;
+        };
+    } | {
+        type: 'custom';
+        custom: {
+            /**
+             * The name of the custom tool
+             */
+            name: string;
+            /**
+             * Description of the tool
+             */
+            description?: string;
+            /**
+             * The input format for the custom tool
+             */
+            format?: {
+                /**
+                 * Unconstrained text format
+                 */
+                type: 'text';
+            } | {
+                type: 'grammar';
+                grammar: {
+                    /**
+                     * The grammar definition
+                     */
+                    definition: string;
+                    /**
+                     * The syntax of the grammar
+                     */
+                    syntax: 'lark' | 'regex';
+                };
+            };
+        };
+    }>;
+    /**
+     * Tool choice option
+     */
+    tool_choice?: 'none' | 'auto' | 'required' | {
+        type: 'allowed_tools';
+        /**
+         * Allowed tools configuration
+         */
+        allowed_tools: {
+            /**
+             *
+             * Constrains the tools available to the model.
+             * auto: allows the model to pick from allowed tools or generate a message.
+             * required: requires the model to call one or more of the allowed tools.
+             *
+             */
+            mode: 'auto' | 'required';
+            tools: Array<{
+                [key: string]: {
+                    type: 'function';
+                    /**
+                     * A function definition for tool calling
+                     */
+                    function: {
+                        name: string;
+                        description?: string;
+                        /**
+                         *
+                         * The parameters the functions accepts, described as a JSON Schema object.
+                         * Omitting parameters defines a function with an empty parameter list.
+                         *
+                         */
+                        parameters?: {
+                            [key: string]: unknown;
+                        };
+                        strict?: boolean | unknown;
+                    };
+                };
+            }>;
+        };
+    } | {
+        type: 'function';
+        function: {
+            name: string;
+        };
+    } | {
+        type: 'custom';
+        custom: {
+            /**
+             * The name of the custom tool
+             */
+            name: string;
+            /**
+             * Description of the tool
+             */
+            description?: string;
+            /**
+             * The input format for the custom tool
+             */
+            format?: {
+                /**
+                 * Unconstrained text format
+                 */
+                type: 'text';
+            } | {
+                type: 'grammar';
+                grammar: {
+                    /**
+                     * The grammar definition
+                     */
+                    definition: string;
+                    /**
+                     * The syntax of the grammar
+                     */
+                    syntax: 'lark' | 'regex';
+                };
+            };
+        };
+    };
+    temperature?: number | unknown;
+    max_tokens?: number | unknown;
+    stream?: boolean | unknown;
+    top_p?: number | unknown;
+    top_k?: number | unknown;
+    frequency_penalty?: number | unknown;
+    presence_penalty?: number | unknown;
+    repetition_penalty?: number | unknown;
+    stop?: string | Array<string>;
+    seed?: number | unknown;
+    n?: number | unknown;
+    best_of?: number | unknown;
+    logprobs?: boolean | unknown;
+    top_logprobs?: number | unknown;
+};
+
+export type VllmChatCompletionResponse = {
+    id: string;
+    choices: Array<{
+        finish_reason: 'stop' | 'length' | 'tool_calls' | 'content_filter' | 'function_call';
+        index: number;
+        logprobs: unknown;
+        /**
+         * The assistant message in the response
+         */
+        message: {
+            content: string | unknown;
+            refusal?: string | unknown;
+            role: 'assistant';
+            annotations?: Array<unknown>;
+            audio?: unknown;
+            function_call?: {
+                arguments: string;
+                name: string;
+            } | unknown;
+            /**
+             * A tool call in the assistant message
+             */
+            tool_calls?: Array<{
+                id: string;
+                type: 'function';
+                /**
+                 * Function call details
+                 */
+                function: {
+                    arguments: string;
+                    name: string;
+                };
+            } | {
+                id: string;
+                type: 'custom';
+                /**
+                 * Custom tool call details
+                 */
+                custom: {
+                    input: string;
+                    name: string;
+                };
+            }>;
+            reasoning?: string | unknown;
+        };
+    }>;
+    created: number;
+    model: string;
+    object: 'chat.completion';
+    system_fingerprint?: string | unknown;
+    /**
+     * Token usage statistics for the completion
+     */
+    usage?: {
+        completion_tokens: number;
+        prompt_tokens: number;
+        total_tokens: number;
+        completion_tokens_details?: unknown;
+        prompt_tokens_details?: unknown;
+    };
+};
+
+export type OllamaChatCompletionRequest = {
+    model: string;
+    /**
+     * A message in the conversation
+     */
+    messages: Array<{
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        }>;
+        role: 'developer';
+        name?: string;
+    } | {
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        }>;
+        role: 'system';
+        name?: string;
+    } | {
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        } | {
+            type: 'image_url';
+            /**
+             * Image URL details
+             */
+            image_url: {
+                url: string;
+                detail?: 'auto' | 'low' | 'high';
+            };
+        } | {
+            type: 'input_audio';
+            /**
+             * Audio input details
+             */
+            input_audio: {
+                data: string;
+                format: 'wav' | 'mp3';
+            };
+        } | {
+            type: 'file';
+            /**
+             * File details
+             */
+            file: {
+                file_data?: string;
+                file_id?: string;
+                filename?: string;
+            };
+        }>;
+        role: 'user';
+        name?: string;
+    } | {
+        role: 'assistant';
+        audio?: {
+            id: string;
+        } | unknown;
+        content?: string | Array<{
+            type: 'text';
+            text: string;
+        }> | Array<{
+            type: 'refusal';
+            refusal: string;
+        }> | unknown;
+        function_call?: {
+            arguments: string;
+            name: string;
+        } | unknown;
+        name?: string;
+        refusal?: string | unknown;
+        /**
+         * A tool call in the assistant message
+         */
+        tool_calls?: Array<{
+            id: string;
+            type: 'function';
+            /**
+             * Function call details
+             */
+            function: {
+                arguments: string;
+                name: string;
+            };
+        } | {
+            id: string;
+            type: 'custom';
+            /**
+             * Custom tool call details
+             */
+            custom: {
+                input: string;
+                name: string;
+            };
+        }>;
+    } | {
+        role: 'tool';
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        } | {
+            type: 'image_url';
+            /**
+             * Image URL details
+             */
+            image_url: {
+                url: string;
+                detail?: 'auto' | 'low' | 'high';
+            };
+        }>;
+        tool_call_id: string;
+    } | {
+        role: 'function';
+        content: string | unknown;
+        name: string;
+    }>;
+    /**
+     * A tool definition
+     */
+    tools?: Array<{
+        type: 'function';
+        /**
+         * A function definition for tool calling
+         */
+        function: {
+            name: string;
+            description?: string;
+            /**
+             *
+             * The parameters the functions accepts, described as a JSON Schema object.
+             * Omitting parameters defines a function with an empty parameter list.
+             *
+             */
+            parameters?: {
+                [key: string]: unknown;
+            };
+            strict?: boolean | unknown;
+        };
+    } | {
+        type: 'custom';
+        custom: {
+            /**
+             * The name of the custom tool
+             */
+            name: string;
+            /**
+             * Description of the tool
+             */
+            description?: string;
+            /**
+             * The input format for the custom tool
+             */
+            format?: {
+                /**
+                 * Unconstrained text format
+                 */
+                type: 'text';
+            } | {
+                type: 'grammar';
+                grammar: {
+                    /**
+                     * The grammar definition
+                     */
+                    definition: string;
+                    /**
+                     * The syntax of the grammar
+                     */
+                    syntax: 'lark' | 'regex';
+                };
+            };
+        };
+    }>;
+    /**
+     * Tool choice option
+     */
+    tool_choice?: 'none' | 'auto' | 'required' | {
+        type: 'allowed_tools';
+        /**
+         * Allowed tools configuration
+         */
+        allowed_tools: {
+            /**
+             *
+             * Constrains the tools available to the model.
+             * auto: allows the model to pick from allowed tools or generate a message.
+             * required: requires the model to call one or more of the allowed tools.
+             *
+             */
+            mode: 'auto' | 'required';
+            tools: Array<{
+                [key: string]: {
+                    type: 'function';
+                    /**
+                     * A function definition for tool calling
+                     */
+                    function: {
+                        name: string;
+                        description?: string;
+                        /**
+                         *
+                         * The parameters the functions accepts, described as a JSON Schema object.
+                         * Omitting parameters defines a function with an empty parameter list.
+                         *
+                         */
+                        parameters?: {
+                            [key: string]: unknown;
+                        };
+                        strict?: boolean | unknown;
+                    };
+                };
+            }>;
+        };
+    } | {
+        type: 'function';
+        function: {
+            name: string;
+        };
+    } | {
+        type: 'custom';
+        custom: {
+            /**
+             * The name of the custom tool
+             */
+            name: string;
+            /**
+             * Description of the tool
+             */
+            description?: string;
+            /**
+             * The input format for the custom tool
+             */
+            format?: {
+                /**
+                 * Unconstrained text format
+                 */
+                type: 'text';
+            } | {
+                type: 'grammar';
+                grammar: {
+                    /**
+                     * The grammar definition
+                     */
+                    definition: string;
+                    /**
+                     * The syntax of the grammar
+                     */
+                    syntax: 'lark' | 'regex';
+                };
+            };
+        };
+    };
+    temperature?: number | unknown;
+    max_tokens?: number | unknown;
+    stream?: boolean | unknown;
+    top_p?: number | unknown;
+    frequency_penalty?: number | unknown;
+    presence_penalty?: number | unknown;
+    stop?: string | Array<string>;
+    seed?: number | unknown;
+    n?: number | unknown;
+};
+
+export type OllamaChatCompletionResponse = {
+    id: string;
+    choices: Array<{
+        finish_reason: 'stop' | 'length' | 'tool_calls' | 'content_filter' | 'function_call';
+        index: number;
+        logprobs: unknown;
+        /**
+         * The assistant message in the response
+         */
+        message: {
+            content: string | unknown;
+            refusal?: string | unknown;
+            role: 'assistant';
+            annotations?: Array<unknown>;
+            audio?: unknown;
+            function_call?: {
+                arguments: string;
+                name: string;
+            } | unknown;
+            /**
+             * A tool call in the assistant message
+             */
+            tool_calls?: Array<{
+                id: string;
+                type: 'function';
+                /**
+                 * Function call details
+                 */
+                function: {
+                    arguments: string;
+                    name: string;
+                };
+            } | {
+                id: string;
+                type: 'custom';
+                /**
+                 * Custom tool call details
+                 */
+                custom: {
+                    input: string;
+                    name: string;
+                };
+            }>;
+        };
+    }>;
+    created: number;
+    model: string;
+    object: 'chat.completion';
+    system_fingerprint?: string | unknown;
+    /**
+     * Token usage statistics for the completion
+     */
+    usage?: {
+        completion_tokens: number;
+        prompt_tokens: number;
+        total_tokens: number;
+        completion_tokens_details?: unknown;
+        prompt_tokens_details?: unknown;
+    };
+};
+
+export type ZhipuaiChatCompletionRequest = {
+    model: string;
+    /**
+     * https://docs.z.ai/api-reference/llm/chat-completion#body
+     */
+    messages: Array<{
+        role: 'system';
+        content: string;
+        name?: string;
+    } | {
+        role: 'user';
+        content: string | Array<{
+            type: 'text';
+            text: string;
+        } | {
+            type: 'image_url';
+            /**
+             * https://docs.z.ai/api-reference/llm/chat-completion#body
+             */
+            image_url: {
+                url: string;
+                detail?: 'auto' | 'low' | 'high';
+            };
+        }>;
+        name?: string;
+    } | {
+        role: 'assistant';
+        content?: string | unknown;
+        name?: string;
+        tool_calls?: Array<{
+            id: string;
+            type: 'function';
+            /**
+             * https://docs.z.ai/api-reference/llm/chat-completion#response
+             */
+            function: {
+                arguments: string;
+                name: string;
+            };
+        }>;
+        function_call?: {
+            arguments: string;
+            name: string;
+        };
+    } | {
+        role: 'tool';
+        content: string;
+        tool_call_id: string;
+    } | {
+        role: 'function';
+        content: string;
+        name: string;
+    }>;
+    tools?: Array<{
+        type: 'function';
+        /**
+         * https://docs.z.ai/api-reference/llm/chat-completion#body
+         */
+        function: {
+            name: string;
+            description?: string;
+            /**
+             *
+             * https://docs.z.ai/api-reference/llm/chat-completion#body
+             *
+             * The parameters the functions accepts, described as a JSON Schema object. See the
+             * [JSON Schema reference](https://json-schema.org/understanding-json-schema/) for
+             * documentation about the format.
+             *
+             * Omitting parameters defines a function with an empty parameter list.
+             *
+             */
+            parameters?: {
+                [key: string]: unknown;
+            };
+            strict?: boolean | unknown;
+        };
+    }>;
+    /**
+     * https://docs.z.ai/api-reference/llm/chat-completion#body
+     */
+    tool_choice?: 'auto' | {
+        type: 'function';
+        function: {
+            name: string;
+        };
+    };
+    request_id?: string;
+    do_sample?: boolean;
+    stream?: boolean;
+    thinking?: {
+        type: 'enabled' | 'disabled';
+        clear_thinking?: boolean;
+    };
+    temperature?: number | unknown;
+    top_p?: number | unknown;
+    max_tokens?: number | unknown;
+    tool_stream?: boolean;
+    stop?: Array<string>;
+    response_format?: {
+        type: 'text' | 'json_object';
+    };
+    user_id?: string;
+};
+
+export type ZhipuaiChatCompletionResponse = {
+    id: string;
+    request_id?: string;
+    choices: Array<{
+        finish_reason: 'stop' | 'length' | 'tool_calls' | 'sensitive' | 'network_error';
+        index: number;
+        logprobs: unknown;
+        /**
+         * https://docs.z.ai/api-reference/llm/chat-completion#response
+         */
+        message: {
+            content: string | unknown;
+            role: 'assistant';
+            reasoning_content?: string;
+            tool_calls?: Array<{
+                id: string;
+                type: 'function';
+                /**
+                 * https://docs.z.ai/api-reference/llm/chat-completion#response
+                 */
+                function: {
+                    arguments: string;
+                    name: string;
+                };
+            }>;
+            function_call?: {
+                arguments: string;
+                name: string;
+            } | unknown;
+        };
+    }>;
+    created: number;
+    model: string;
+    object: 'chat.completion';
+    system_fingerprint?: string | unknown;
+    /**
+     * https://docs.z.ai/api-reference/llm/chat-completion#response
+     */
+    usage?: {
+        completion_tokens: number;
+        prompt_tokens: number;
+        total_tokens: number;
+        /**
+         * https://docs.z.ai/api-reference/llm/chat-completion#response
+         */
+        prompt_tokens_details?: {
+            cached_tokens: number;
+        };
+    };
+    /**
+     * https://docs.z.ai/api-reference/llm/chat-completion#response
+     */
+    web_search?: Array<{
+        title: string;
+        content: string;
+        link: string;
+        media: string;
+        icon: string;
+        refer: string;
+        publish_date: string;
+    }>;
 };
 
 export type GetHealthData = {
@@ -2756,6 +6180,95 @@ export type GetHealthResponses = {
 
 export type GetHealthResponse = GetHealthResponses[keyof GetHealthResponses];
 
+export type GetV1A2aByAgentIdWellKnownAgentJsonData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/v1/a2a/{agentId}/.well-known/agent.json';
+};
+
+export type GetV1A2aByAgentIdWellKnownAgentJsonResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        name: string;
+        description: string;
+        url: string;
+        version: string;
+        capabilities: {
+            streaming: boolean;
+            pushNotifications: boolean;
+            stateTransitionHistory: boolean;
+        };
+        defaultInputModes: Array<string>;
+        defaultOutputModes: Array<string>;
+        skills: Array<{
+            id: string;
+            name: string;
+            description: string;
+            tags: Array<string>;
+            inputModes: Array<string>;
+            outputModes: Array<string>;
+        }>;
+    };
+};
+
+export type GetV1A2aByAgentIdWellKnownAgentJsonResponse = GetV1A2aByAgentIdWellKnownAgentJsonResponses[keyof GetV1A2aByAgentIdWellKnownAgentJsonResponses];
+
+export type PostV1A2aByAgentIdData = {
+    body: {
+        jsonrpc: '2.0';
+        id: string | number;
+        method: string;
+        params?: {
+            message?: {
+                parts?: Array<{
+                    kind: 'text';
+                    text: string;
+                }>;
+            };
+        };
+    };
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/v1/a2a/{agentId}';
+};
+
+export type PostV1A2aByAgentIdResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        jsonrpc: '2.0';
+        id: string | number;
+        result?: {
+            messageId: string;
+            role: 'user' | 'agent';
+            parts: Array<{
+                kind: 'text';
+                text: string;
+            }>;
+            contextId?: string;
+            taskId?: string;
+            metadata?: {
+                [key: string]: unknown;
+            };
+        };
+        error?: {
+            code: number;
+            message: string;
+            data?: unknown;
+        };
+    };
+};
+
+export type PostV1A2aByAgentIdResponse = PostV1A2aByAgentIdResponses[keyof PostV1A2aByAgentIdResponses];
+
 export type GetAgentsData = {
     body?: never;
     path?: never;
@@ -2764,6 +6277,14 @@ export type GetAgentsData = {
          * Filter by agent name
          */
         name?: string;
+        /**
+         * Filter by agent type. 'profile' = external API gateway profiles, 'mcp_gateway' = MCP gateway, 'llm_proxy' = LLM proxy, 'agent' = internal agents with prompts.
+         */
+        agentType?: 'profile' | 'mcp_gateway' | 'llm_proxy' | 'agent';
+        /**
+         * Filter by multiple agent types (comma-separated). Takes precedence over agentType if both provided.
+         */
+        agentTypes?: Array<'profile' | 'mcp_gateway' | 'llm_proxy' | 'agent'>;
         limit?: number;
         offset?: number;
         sortBy?: 'name' | 'createdAt' | 'toolsCount' | 'team';
@@ -2838,10 +6359,28 @@ export type GetAgentsResponses = {
     200: {
         data: Array<{
             id: string;
+            organizationId: string;
             name: string;
             isDemo: boolean;
             isDefault: boolean;
             considerContextUntrusted: boolean;
+            agentType: 'profile' | 'mcp_gateway' | 'llm_proxy' | 'agent';
+            systemPrompt: string | null;
+            userPrompt: string | null;
+            promptVersion: number | null;
+            promptHistory: string | number | boolean | null | {
+                [key: string]: unknown;
+            } | Array<unknown> | null;
+            allowedChatops: string | number | boolean | null | {
+                [key: string]: unknown;
+            } | Array<unknown> | null;
+            description: string | null;
+            incomingEmailEnabled: boolean;
+            incomingEmailSecurityMode: 'private' | 'internal' | 'public';
+            incomingEmailAllowedDomain: string | null;
+            llmApiKeyId: string | null;
+            llmModel: string | null;
+            identityProviderId: string | null;
             createdAt: string;
             updatedAt: string;
             tools: Array<{
@@ -2849,6 +6388,7 @@ export type GetAgentsResponses = {
                 agentId: string | null;
                 catalogId: string | null;
                 mcpServerId: string | null;
+                delegateToAgentId: string | null;
                 name: string;
                 /**
                  *
@@ -2866,6 +6406,9 @@ export type GetAgentsResponses = {
                     [key: string]: unknown;
                 };
                 description: string | null;
+                policiesAutoConfiguredAt: string | null;
+                policiesAutoConfiguringStartedAt: string | null;
+                policiesAutoConfiguredReasoning: string | null;
                 createdAt: string;
                 updatedAt: string;
             }>;
@@ -2895,10 +6438,24 @@ export type GetAgentsResponse = GetAgentsResponses[keyof GetAgentsResponses];
 
 export type CreateAgentData = {
     body: {
+        organizationId?: string;
         name: string;
         isDemo?: boolean;
         isDefault?: boolean;
         considerContextUntrusted?: boolean;
+        agentType?: 'profile' | 'mcp_gateway' | 'llm_proxy' | 'agent';
+        systemPrompt?: string | null;
+        userPrompt?: string | null;
+        allowedChatops?: string | number | boolean | null | {
+            [key: string]: unknown;
+        } | Array<unknown> | null;
+        description?: string | null;
+        incomingEmailEnabled?: boolean;
+        incomingEmailSecurityMode?: 'private' | 'internal' | 'public';
+        incomingEmailAllowedDomain?: string | null;
+        llmApiKeyId?: string | null;
+        llmModel?: string | null;
+        identityProviderId?: string | null;
         teams: Array<string>;
         labels?: Array<{
             key: string;
@@ -2977,10 +6534,28 @@ export type CreateAgentResponses = {
      */
     200: {
         id: string;
+        organizationId: string;
         name: string;
         isDemo: boolean;
         isDefault: boolean;
         considerContextUntrusted: boolean;
+        agentType: 'profile' | 'mcp_gateway' | 'llm_proxy' | 'agent';
+        systemPrompt: string | null;
+        userPrompt: string | null;
+        promptVersion: number | null;
+        promptHistory: string | number | boolean | null | {
+            [key: string]: unknown;
+        } | Array<unknown> | null;
+        allowedChatops: string | number | boolean | null | {
+            [key: string]: unknown;
+        } | Array<unknown> | null;
+        description: string | null;
+        incomingEmailEnabled: boolean;
+        incomingEmailSecurityMode: 'private' | 'internal' | 'public';
+        incomingEmailAllowedDomain: string | null;
+        llmApiKeyId: string | null;
+        llmModel: string | null;
+        identityProviderId: string | null;
         createdAt: string;
         updatedAt: string;
         tools: Array<{
@@ -2988,6 +6563,7 @@ export type CreateAgentResponses = {
             agentId: string | null;
             catalogId: string | null;
             mcpServerId: string | null;
+            delegateToAgentId: string | null;
             name: string;
             /**
              *
@@ -3005,6 +6581,9 @@ export type CreateAgentResponses = {
                 [key: string]: unknown;
             };
             description: string | null;
+            policiesAutoConfiguredAt: string | null;
+            policiesAutoConfiguringStartedAt: string | null;
+            policiesAutoConfiguredReasoning: string | null;
             createdAt: string;
             updatedAt: string;
         }>;
@@ -3026,7 +6605,16 @@ export type CreateAgentResponse = CreateAgentResponses[keyof CreateAgentResponse
 export type GetAllAgentsData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * Filter by agent type. 'profile' = external API gateway profiles, 'mcp_gateway' = MCP gateway, 'llm_proxy' = LLM proxy, 'agent' = internal agents with prompts.
+         */
+        agentType?: 'profile' | 'mcp_gateway' | 'llm_proxy' | 'agent';
+        /**
+         * Filter by multiple agent types (comma-separated). Takes precedence over agentType if both provided.
+         */
+        agentTypes?: Array<'profile' | 'mcp_gateway' | 'llm_proxy' | 'agent'>;
+    };
     url: '/api/agents/all';
 };
 
@@ -3095,10 +6683,28 @@ export type GetAllAgentsResponses = {
      */
     200: Array<{
         id: string;
+        organizationId: string;
         name: string;
         isDemo: boolean;
         isDefault: boolean;
         considerContextUntrusted: boolean;
+        agentType: 'profile' | 'mcp_gateway' | 'llm_proxy' | 'agent';
+        systemPrompt: string | null;
+        userPrompt: string | null;
+        promptVersion: number | null;
+        promptHistory: string | number | boolean | null | {
+            [key: string]: unknown;
+        } | Array<unknown> | null;
+        allowedChatops: string | number | boolean | null | {
+            [key: string]: unknown;
+        } | Array<unknown> | null;
+        description: string | null;
+        incomingEmailEnabled: boolean;
+        incomingEmailSecurityMode: 'private' | 'internal' | 'public';
+        incomingEmailAllowedDomain: string | null;
+        llmApiKeyId: string | null;
+        llmModel: string | null;
+        identityProviderId: string | null;
         createdAt: string;
         updatedAt: string;
         tools: Array<{
@@ -3106,6 +6712,7 @@ export type GetAllAgentsResponses = {
             agentId: string | null;
             catalogId: string | null;
             mcpServerId: string | null;
+            delegateToAgentId: string | null;
             name: string;
             /**
              *
@@ -3123,6 +6730,9 @@ export type GetAllAgentsResponses = {
                 [key: string]: unknown;
             };
             description: string | null;
+            policiesAutoConfiguredAt: string | null;
+            policiesAutoConfiguringStartedAt: string | null;
+            policiesAutoConfiguredReasoning: string | null;
             createdAt: string;
             updatedAt: string;
         }>;
@@ -3141,14 +6751,14 @@ export type GetAllAgentsResponses = {
 
 export type GetAllAgentsResponse = GetAllAgentsResponses[keyof GetAllAgentsResponses];
 
-export type GetDefaultAgentData = {
+export type GetDefaultMcpGatewayData = {
     body?: never;
     path?: never;
     query?: never;
-    url: '/api/agents/default';
+    url: '/api/mcp-gateways/default';
 };
 
-export type GetDefaultAgentErrors = {
+export type GetDefaultMcpGatewayErrors = {
     /**
      * Default Response
      */
@@ -3205,18 +6815,36 @@ export type GetDefaultAgentErrors = {
     };
 };
 
-export type GetDefaultAgentError = GetDefaultAgentErrors[keyof GetDefaultAgentErrors];
+export type GetDefaultMcpGatewayError = GetDefaultMcpGatewayErrors[keyof GetDefaultMcpGatewayErrors];
 
-export type GetDefaultAgentResponses = {
+export type GetDefaultMcpGatewayResponses = {
     /**
      * Default Response
      */
     200: {
         id: string;
+        organizationId: string;
         name: string;
         isDemo: boolean;
         isDefault: boolean;
         considerContextUntrusted: boolean;
+        agentType: 'profile' | 'mcp_gateway' | 'llm_proxy' | 'agent';
+        systemPrompt: string | null;
+        userPrompt: string | null;
+        promptVersion: number | null;
+        promptHistory: string | number | boolean | null | {
+            [key: string]: unknown;
+        } | Array<unknown> | null;
+        allowedChatops: string | number | boolean | null | {
+            [key: string]: unknown;
+        } | Array<unknown> | null;
+        description: string | null;
+        incomingEmailEnabled: boolean;
+        incomingEmailSecurityMode: 'private' | 'internal' | 'public';
+        incomingEmailAllowedDomain: string | null;
+        llmApiKeyId: string | null;
+        llmModel: string | null;
+        identityProviderId: string | null;
         createdAt: string;
         updatedAt: string;
         tools: Array<{
@@ -3224,6 +6852,7 @@ export type GetDefaultAgentResponses = {
             agentId: string | null;
             catalogId: string | null;
             mcpServerId: string | null;
+            delegateToAgentId: string | null;
             name: string;
             /**
              *
@@ -3241,6 +6870,9 @@ export type GetDefaultAgentResponses = {
                 [key: string]: unknown;
             };
             description: string | null;
+            policiesAutoConfiguredAt: string | null;
+            policiesAutoConfiguringStartedAt: string | null;
+            policiesAutoConfiguredReasoning: string | null;
             createdAt: string;
             updatedAt: string;
         }>;
@@ -3257,7 +6889,147 @@ export type GetDefaultAgentResponses = {
     };
 };
 
-export type GetDefaultAgentResponse = GetDefaultAgentResponses[keyof GetDefaultAgentResponses];
+export type GetDefaultMcpGatewayResponse = GetDefaultMcpGatewayResponses[keyof GetDefaultMcpGatewayResponses];
+
+export type GetDefaultLlmProxyData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/llm-proxy/default';
+};
+
+export type GetDefaultLlmProxyErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type GetDefaultLlmProxyError = GetDefaultLlmProxyErrors[keyof GetDefaultLlmProxyErrors];
+
+export type GetDefaultLlmProxyResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        id: string;
+        organizationId: string;
+        name: string;
+        isDemo: boolean;
+        isDefault: boolean;
+        considerContextUntrusted: boolean;
+        agentType: 'profile' | 'mcp_gateway' | 'llm_proxy' | 'agent';
+        systemPrompt: string | null;
+        userPrompt: string | null;
+        promptVersion: number | null;
+        promptHistory: string | number | boolean | null | {
+            [key: string]: unknown;
+        } | Array<unknown> | null;
+        allowedChatops: string | number | boolean | null | {
+            [key: string]: unknown;
+        } | Array<unknown> | null;
+        description: string | null;
+        incomingEmailEnabled: boolean;
+        incomingEmailSecurityMode: 'private' | 'internal' | 'public';
+        incomingEmailAllowedDomain: string | null;
+        llmApiKeyId: string | null;
+        llmModel: string | null;
+        identityProviderId: string | null;
+        createdAt: string;
+        updatedAt: string;
+        tools: Array<{
+            id: string;
+            agentId: string | null;
+            catalogId: string | null;
+            mcpServerId: string | null;
+            delegateToAgentId: string | null;
+            name: string;
+            /**
+             *
+             * https://github.com/openai/openai-node/blob/master/src/resources/shared.ts#L217
+             *
+             * The parameters the functions accepts, described as a JSON Schema object. See the
+             * [guide](https://platform.openai.com/docs/guides/function-calling) for examples,
+             * and the [JSON Schema reference](https://json-schema.org/understanding-json-schema/) for
+             * documentation about the format.
+             *
+             * Omitting parameters defines a function with an empty parameter list.
+             *
+             */
+            parameters?: {
+                [key: string]: unknown;
+            };
+            description: string | null;
+            policiesAutoConfiguredAt: string | null;
+            policiesAutoConfiguringStartedAt: string | null;
+            policiesAutoConfiguredReasoning: string | null;
+            createdAt: string;
+            updatedAt: string;
+        }>;
+        teams: Array<{
+            id: string;
+            name: string;
+        }>;
+        labels: Array<{
+            key: string;
+            value: string;
+            keyId?: string;
+            valueId?: string;
+        }>;
+    };
+};
+
+export type GetDefaultLlmProxyResponse = GetDefaultLlmProxyResponses[keyof GetDefaultLlmProxyResponses];
 
 export type DeleteAgentData = {
     body?: never;
@@ -3412,10 +7184,28 @@ export type GetAgentResponses = {
      */
     200: {
         id: string;
+        organizationId: string;
         name: string;
         isDemo: boolean;
         isDefault: boolean;
         considerContextUntrusted: boolean;
+        agentType: 'profile' | 'mcp_gateway' | 'llm_proxy' | 'agent';
+        systemPrompt: string | null;
+        userPrompt: string | null;
+        promptVersion: number | null;
+        promptHistory: string | number | boolean | null | {
+            [key: string]: unknown;
+        } | Array<unknown> | null;
+        allowedChatops: string | number | boolean | null | {
+            [key: string]: unknown;
+        } | Array<unknown> | null;
+        description: string | null;
+        incomingEmailEnabled: boolean;
+        incomingEmailSecurityMode: 'private' | 'internal' | 'public';
+        incomingEmailAllowedDomain: string | null;
+        llmApiKeyId: string | null;
+        llmModel: string | null;
+        identityProviderId: string | null;
         createdAt: string;
         updatedAt: string;
         tools: Array<{
@@ -3423,6 +7213,7 @@ export type GetAgentResponses = {
             agentId: string | null;
             catalogId: string | null;
             mcpServerId: string | null;
+            delegateToAgentId: string | null;
             name: string;
             /**
              *
@@ -3440,6 +7231,9 @@ export type GetAgentResponses = {
                 [key: string]: unknown;
             };
             description: string | null;
+            policiesAutoConfiguredAt: string | null;
+            policiesAutoConfiguringStartedAt: string | null;
+            policiesAutoConfiguredReasoning: string | null;
             createdAt: string;
             updatedAt: string;
         }>;
@@ -3460,10 +7254,24 @@ export type GetAgentResponse = GetAgentResponses[keyof GetAgentResponses];
 
 export type UpdateAgentData = {
     body?: {
+        organizationId?: string;
         name?: string;
         isDemo?: boolean;
         isDefault?: boolean;
         considerContextUntrusted?: boolean;
+        agentType?: 'profile' | 'mcp_gateway' | 'llm_proxy' | 'agent';
+        systemPrompt?: string | null;
+        userPrompt?: string | null;
+        allowedChatops?: string | number | boolean | null | {
+            [key: string]: unknown;
+        } | Array<unknown> | null;
+        description?: string | null;
+        incomingEmailEnabled?: boolean;
+        incomingEmailSecurityMode?: 'private' | 'internal' | 'public';
+        incomingEmailAllowedDomain?: string | null;
+        llmApiKeyId?: string | null;
+        llmModel?: string | null;
+        identityProviderId?: string | null;
         teams?: Array<string>;
         labels?: Array<{
             key: string;
@@ -3544,10 +7352,28 @@ export type UpdateAgentResponses = {
      */
     200: {
         id: string;
+        organizationId: string;
         name: string;
         isDemo: boolean;
         isDefault: boolean;
         considerContextUntrusted: boolean;
+        agentType: 'profile' | 'mcp_gateway' | 'llm_proxy' | 'agent';
+        systemPrompt: string | null;
+        userPrompt: string | null;
+        promptVersion: number | null;
+        promptHistory: string | number | boolean | null | {
+            [key: string]: unknown;
+        } | Array<unknown> | null;
+        allowedChatops: string | number | boolean | null | {
+            [key: string]: unknown;
+        } | Array<unknown> | null;
+        description: string | null;
+        incomingEmailEnabled: boolean;
+        incomingEmailSecurityMode: 'private' | 'internal' | 'public';
+        incomingEmailAllowedDomain: string | null;
+        llmApiKeyId: string | null;
+        llmModel: string | null;
+        identityProviderId: string | null;
         createdAt: string;
         updatedAt: string;
         tools: Array<{
@@ -3555,6 +7381,7 @@ export type UpdateAgentResponses = {
             agentId: string | null;
             catalogId: string | null;
             mcpServerId: string | null;
+            delegateToAgentId: string | null;
             name: string;
             /**
              *
@@ -3572,6 +7399,9 @@ export type UpdateAgentResponses = {
                 [key: string]: unknown;
             };
             description: string | null;
+            policiesAutoConfiguredAt: string | null;
+            policiesAutoConfiguringStartedAt: string | null;
+            policiesAutoConfiguredReasoning: string | null;
             createdAt: string;
             updatedAt: string;
         }>;
@@ -3589,6 +7419,303 @@ export type UpdateAgentResponses = {
 };
 
 export type UpdateAgentResponse = UpdateAgentResponses[keyof UpdateAgentResponses];
+
+export type GetAgentVersionsData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/agents/{id}/versions';
+};
+
+export type GetAgentVersionsErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type GetAgentVersionsError = GetAgentVersionsErrors[keyof GetAgentVersionsErrors];
+
+export type GetAgentVersionsResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        current: {
+            id: string;
+            organizationId: string;
+            name: string;
+            isDemo: boolean;
+            isDefault: boolean;
+            considerContextUntrusted: boolean;
+            agentType: 'profile' | 'mcp_gateway' | 'llm_proxy' | 'agent';
+            systemPrompt: string | null;
+            userPrompt: string | null;
+            promptVersion: number | null;
+            promptHistory: string | number | boolean | null | {
+                [key: string]: unknown;
+            } | Array<unknown> | null;
+            allowedChatops: string | number | boolean | null | {
+                [key: string]: unknown;
+            } | Array<unknown> | null;
+            description: string | null;
+            incomingEmailEnabled: boolean;
+            incomingEmailSecurityMode: 'private' | 'internal' | 'public';
+            incomingEmailAllowedDomain: string | null;
+            llmApiKeyId: string | null;
+            llmModel: string | null;
+            identityProviderId: string | null;
+            createdAt: string;
+            updatedAt: string;
+            tools: Array<{
+                id: string;
+                agentId: string | null;
+                catalogId: string | null;
+                mcpServerId: string | null;
+                delegateToAgentId: string | null;
+                name: string;
+                /**
+                 *
+                 * https://github.com/openai/openai-node/blob/master/src/resources/shared.ts#L217
+                 *
+                 * The parameters the functions accepts, described as a JSON Schema object. See the
+                 * [guide](https://platform.openai.com/docs/guides/function-calling) for examples,
+                 * and the [JSON Schema reference](https://json-schema.org/understanding-json-schema/) for
+                 * documentation about the format.
+                 *
+                 * Omitting parameters defines a function with an empty parameter list.
+                 *
+                 */
+                parameters?: {
+                    [key: string]: unknown;
+                };
+                description: string | null;
+                policiesAutoConfiguredAt: string | null;
+                policiesAutoConfiguringStartedAt: string | null;
+                policiesAutoConfiguredReasoning: string | null;
+                createdAt: string;
+                updatedAt: string;
+            }>;
+            teams: Array<{
+                id: string;
+                name: string;
+            }>;
+            labels: Array<{
+                key: string;
+                value: string;
+                keyId?: string;
+                valueId?: string;
+            }>;
+        };
+        history: Array<{
+            version: number;
+            userPrompt: string | null;
+            systemPrompt: string | null;
+            createdAt: string;
+        }>;
+    };
+};
+
+export type GetAgentVersionsResponse = GetAgentVersionsResponses[keyof GetAgentVersionsResponses];
+
+export type RollbackAgentData = {
+    body: {
+        /**
+         * Version to rollback to
+         */
+        version: number;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/agents/{id}/rollback';
+};
+
+export type RollbackAgentErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type RollbackAgentError = RollbackAgentErrors[keyof RollbackAgentErrors];
+
+export type RollbackAgentResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        id: string;
+        organizationId: string;
+        name: string;
+        isDemo: boolean;
+        isDefault: boolean;
+        considerContextUntrusted: boolean;
+        agentType: 'profile' | 'mcp_gateway' | 'llm_proxy' | 'agent';
+        systemPrompt: string | null;
+        userPrompt: string | null;
+        promptVersion: number | null;
+        promptHistory: string | number | boolean | null | {
+            [key: string]: unknown;
+        } | Array<unknown> | null;
+        allowedChatops: string | number | boolean | null | {
+            [key: string]: unknown;
+        } | Array<unknown> | null;
+        description: string | null;
+        incomingEmailEnabled: boolean;
+        incomingEmailSecurityMode: 'private' | 'internal' | 'public';
+        incomingEmailAllowedDomain: string | null;
+        llmApiKeyId: string | null;
+        llmModel: string | null;
+        identityProviderId: string | null;
+        createdAt: string;
+        updatedAt: string;
+        tools: Array<{
+            id: string;
+            agentId: string | null;
+            catalogId: string | null;
+            mcpServerId: string | null;
+            delegateToAgentId: string | null;
+            name: string;
+            /**
+             *
+             * https://github.com/openai/openai-node/blob/master/src/resources/shared.ts#L217
+             *
+             * The parameters the functions accepts, described as a JSON Schema object. See the
+             * [guide](https://platform.openai.com/docs/guides/function-calling) for examples,
+             * and the [JSON Schema reference](https://json-schema.org/understanding-json-schema/) for
+             * documentation about the format.
+             *
+             * Omitting parameters defines a function with an empty parameter list.
+             *
+             */
+            parameters?: {
+                [key: string]: unknown;
+            };
+            description: string | null;
+            policiesAutoConfiguredAt: string | null;
+            policiesAutoConfiguringStartedAt: string | null;
+            policiesAutoConfiguredReasoning: string | null;
+            createdAt: string;
+            updatedAt: string;
+        }>;
+        teams: Array<{
+            id: string;
+            name: string;
+        }>;
+        labels: Array<{
+            key: string;
+            value: string;
+            keyId?: string;
+            valueId?: string;
+        }>;
+    };
+};
+
+export type RollbackAgentResponse = RollbackAgentResponses[keyof RollbackAgentResponses];
 
 export type GetLabelKeysData = {
     body?: never;
@@ -3763,8 +7890,9 @@ export type GetAllAgentToolsData = {
          * For test isolation
          */
         excludeArchestraTools?: boolean;
-        sortBy?: 'name' | 'agent' | 'origin' | 'createdAt' | 'allowUsageWhenUntrustedDataIsPresent';
+        sortBy?: 'name' | 'agent' | 'origin' | 'createdAt';
         sortDirection?: 'asc' | 'desc';
+        skipPagination?: boolean;
         limit?: number;
         offset?: number;
     };
@@ -3837,15 +7965,10 @@ export type GetAllAgentToolsResponses = {
     200: {
         data: Array<{
             id: string;
-            allowUsageWhenUntrustedDataIsPresent: boolean;
-            toolResultTreatment: 'trusted' | 'sanitize_with_dual_llm' | 'untrusted';
             responseModifierTemplate: string | null;
             credentialSourceMcpServerId: string | null;
             executionSourceMcpServerId: string | null;
             useDynamicTeamCredential: boolean;
-            policiesAutoConfiguredAt: string | null;
-            policiesAutoConfiguringStartedAt: string | null;
-            policiesAutoConfiguredReasoning: string | null;
             createdAt: string;
             updatedAt: string;
             agent: {
@@ -4153,91 +8276,9 @@ export type BulkAssignToolsResponses = {
 
 export type BulkAssignToolsResponse = BulkAssignToolsResponses[keyof BulkAssignToolsResponses];
 
-export type BulkUpdateAgentToolsData = {
-    body: {
-        ids: Array<string>;
-        field: 'allowUsageWhenUntrustedDataIsPresent' | 'toolResultTreatment';
-        value: boolean | 'trusted' | 'sanitize_with_dual_llm' | 'untrusted';
-        clearAutoConfigured?: boolean;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/agent-tools/bulk-update';
-};
-
-export type BulkUpdateAgentToolsErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        error: {
-            message: string;
-            type: 'api_validation_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    401: {
-        error: {
-            message: string;
-            type: 'api_authentication_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    403: {
-        error: {
-            message: string;
-            type: 'api_authorization_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        error: {
-            message: string;
-            type: 'api_not_found_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    409: {
-        error: {
-            message: string;
-            type: 'api_conflict_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    500: {
-        error: {
-            message: string;
-            type: 'api_internal_server_error';
-        };
-    };
-};
-
-export type BulkUpdateAgentToolsError = BulkUpdateAgentToolsErrors[keyof BulkUpdateAgentToolsErrors];
-
-export type BulkUpdateAgentToolsResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        updatedCount: number;
-    };
-};
-
-export type BulkUpdateAgentToolsResponse = BulkUpdateAgentToolsResponses[keyof BulkUpdateAgentToolsResponses];
-
 export type AutoConfigureAgentToolPoliciesData = {
     body: {
-        agentToolIds: Array<string>;
+        toolIds: Array<string>;
     };
     path?: never;
     query?: never;
@@ -4310,11 +8351,11 @@ export type AutoConfigureAgentToolPoliciesResponses = {
     200: {
         success: boolean;
         results: Array<{
-            agentToolId: string;
+            toolId: string;
             success: boolean;
             config?: {
-                allowUsageWhenUntrustedDataIsPresent: boolean;
-                toolResultTreatment: 'trusted' | 'sanitize_with_dual_llm' | 'untrusted';
+                toolInvocationAction: 'allow_when_context_is_untrusted' | 'block_when_context_is_untrusted' | 'block_always';
+                trustedDataAction: 'mark_as_trusted' | 'mark_as_untrusted' | 'sanitize_with_dual_llm' | 'block_always';
                 reasoning: string;
             };
             error?: string;
@@ -4329,7 +8370,9 @@ export type GetAgentToolsData = {
     path: {
         agentId: string;
     };
-    query?: never;
+    query?: {
+        excludeLlmProxyOrigin?: boolean;
+    };
     url: '/api/agents/{agentId}/tools';
 };
 
@@ -4401,6 +8444,7 @@ export type GetAgentToolsResponses = {
         agentId: string | null;
         catalogId: string | null;
         mcpServerId: string | null;
+        delegateToAgentId: string | null;
         name: string;
         /**
          *
@@ -4418,6 +8462,9 @@ export type GetAgentToolsResponses = {
             [key: string]: unknown;
         };
         description: string | null;
+        policiesAutoConfiguredAt: string | null;
+        policiesAutoConfiguringStartedAt: string | null;
+        policiesAutoConfiguredReasoning: string | null;
         createdAt: string;
         updatedAt: string;
     }>;
@@ -4427,13 +8474,10 @@ export type GetAgentToolsResponse = GetAgentToolsResponses[keyof GetAgentToolsRe
 
 export type UpdateAgentToolData = {
     body?: {
-        allowUsageWhenUntrustedDataIsPresent?: boolean;
-        toolResultTreatment?: 'trusted' | 'sanitize_with_dual_llm' | 'untrusted';
         responseModifierTemplate?: string | null;
         credentialSourceMcpServerId?: string | null;
         executionSourceMcpServerId?: string | null;
         useDynamicTeamCredential?: boolean;
-        policiesAutoConfiguredAt?: unknown;
     };
     path: {
         id: string;
@@ -4509,21 +8553,348 @@ export type UpdateAgentToolResponses = {
         id?: string;
         agentId?: string;
         toolId?: string;
-        allowUsageWhenUntrustedDataIsPresent?: boolean;
-        toolResultTreatment: 'trusted' | 'sanitize_with_dual_llm' | 'untrusted';
         responseModifierTemplate?: string | null;
         credentialSourceMcpServerId?: string | null;
         executionSourceMcpServerId?: string | null;
         useDynamicTeamCredential?: boolean;
-        policiesAutoConfiguredAt?: string | null;
-        policiesAutoConfiguringStartedAt?: string | null;
-        policiesAutoConfiguredReasoning?: string | null;
         createdAt?: string;
         updatedAt?: string;
     };
 };
 
 export type UpdateAgentToolResponse = UpdateAgentToolResponses[keyof UpdateAgentToolResponses];
+
+export type GetAgentDelegationsData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/delegations';
+};
+
+export type GetAgentDelegationsErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type GetAgentDelegationsError = GetAgentDelegationsErrors[keyof GetAgentDelegationsErrors];
+
+export type GetAgentDelegationsResponses = {
+    /**
+     * Default Response
+     */
+    200: Array<{
+        id: string;
+        name: string;
+        description: string | null;
+        systemPrompt: string | null;
+    }>;
+};
+
+export type GetAgentDelegationsResponse = GetAgentDelegationsResponses[keyof GetAgentDelegationsResponses];
+
+export type SyncAgentDelegationsData = {
+    body: {
+        targetAgentIds: Array<string>;
+    };
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/delegations';
+};
+
+export type SyncAgentDelegationsErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type SyncAgentDelegationsError = SyncAgentDelegationsErrors[keyof SyncAgentDelegationsErrors];
+
+export type SyncAgentDelegationsResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        added: Array<string>;
+        removed: Array<string>;
+    };
+};
+
+export type SyncAgentDelegationsResponse = SyncAgentDelegationsResponses[keyof SyncAgentDelegationsResponses];
+
+export type DeleteAgentDelegationData = {
+    body?: never;
+    path: {
+        agentId: string;
+        targetAgentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/delegations/{targetAgentId}';
+};
+
+export type DeleteAgentDelegationErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type DeleteAgentDelegationError = DeleteAgentDelegationErrors[keyof DeleteAgentDelegationErrors];
+
+export type DeleteAgentDelegationResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        success: boolean;
+    };
+};
+
+export type DeleteAgentDelegationResponse = DeleteAgentDelegationResponses[keyof DeleteAgentDelegationResponses];
+
+export type GetAllDelegationConnectionsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/agent-delegations';
+};
+
+export type GetAllDelegationConnectionsErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type GetAllDelegationConnectionsError = GetAllDelegationConnectionsErrors[keyof GetAllDelegationConnectionsErrors];
+
+export type GetAllDelegationConnectionsResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        connections: Array<{
+            sourceAgentId: string;
+            sourceAgentName: string;
+            targetAgentId: string;
+            targetAgentName: string;
+            toolId: string;
+        }>;
+        agents: Array<{
+            id: string;
+            name: string;
+            agentType: 'profile' | 'mcp_gateway' | 'llm_proxy' | 'agent';
+        }>;
+    };
+};
+
+export type GetAllDelegationConnectionsResponse = GetAllDelegationConnectionsResponses[keyof GetAllDelegationConnectionsResponses];
 
 export type AnthropicMessagesWithDefaultAgentData = {
     body?: AnthropicMessagesRequestInput;
@@ -4533,7 +8904,15 @@ export type AnthropicMessagesWithDefaultAgentData = {
          */
         'user-agent'?: string;
         'anthropic-version': string;
-        'x-api-key': string;
+        /**
+         * Beta features to enable (comma-separated)
+         */
+        'anthropic-beta'?: string;
+        'x-api-key'?: string;
+        /**
+         * Authorization header (Bearer token for OAuth)
+         */
+        authorization?: string;
     };
     path?: never;
     query?: never;
@@ -4616,7 +8995,15 @@ export type AnthropicMessagesWithAgentData = {
          */
         'user-agent'?: string;
         'anthropic-version': string;
-        'x-api-key': string;
+        /**
+         * Beta features to enable (comma-separated)
+         */
+        'anthropic-beta'?: string;
+        'x-api-key'?: string;
+        /**
+         * Authorization header (Bearer token for OAuth)
+         */
+        authorization?: string;
     };
     path: {
         agentId: string;
@@ -4730,6 +9117,92 @@ export type PostApiAuthOrganizationRemoveMemberData = {
 };
 
 export type PostApiAuthOrganizationRemoveMemberResponses = {
+    /**
+     * Default Response
+     */
+    200: unknown;
+};
+
+export type GetOAuthClientInfoData = {
+    body?: never;
+    path?: never;
+    query: {
+        client_id: string;
+    };
+    url: '/api/auth/oauth2/client-info';
+};
+
+export type GetOAuthClientInfoResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        client_name: string | null;
+    };
+};
+
+export type GetOAuthClientInfoResponse = GetOAuthClientInfoResponses[keyof GetOAuthClientInfoResponses];
+
+export type GetApiAuthOauth2AuthorizeData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/auth/oauth2/authorize';
+};
+
+export type GetApiAuthOauth2AuthorizeResponses = {
+    /**
+     * Default Response
+     */
+    200: unknown;
+};
+
+export type PostApiAuthOauth2TokenData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/auth/oauth2/token';
+};
+
+export type PostApiAuthOauth2TokenResponses = {
+    /**
+     * Default Response
+     */
+    200: unknown;
+};
+
+export type SubmitOAuthConsentData = {
+    body: {
+        accept: boolean;
+        scope: string;
+        oauth_query: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/auth/oauth2/consent';
+};
+
+export type SubmitOAuthConsentResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        redirectTo: string;
+    };
+};
+
+export type SubmitOAuthConsentResponse = SubmitOAuthConsentResponses[keyof SubmitOAuthConsentResponses];
+
+export type PostApiAuthOauth2RegisterData = {
+    body?: {
+        [key: string]: unknown;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/auth/oauth2/register';
+};
+
+export type PostApiAuthOauth2RegisterResponses = {
     /**
      * Default Response
      */
@@ -4918,11 +9391,13 @@ export type GetToolInvocationPoliciesResponses = {
      */
     200: Array<{
         id: string;
-        agentToolId: string;
-        argumentName: string;
-        operator: 'equal' | 'notEqual' | 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'regex';
-        value: string;
-        action: 'allow_when_context_is_untrusted' | 'block_always';
+        toolId: string;
+        conditions: Array<{
+            key: string;
+            operator: 'equal' | 'notEqual' | 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'regex';
+            value: string;
+        }>;
+        action: 'allow_when_context_is_untrusted' | 'block_when_context_is_untrusted' | 'block_always';
         reason: string | null;
         createdAt: string;
         updatedAt: string;
@@ -4933,11 +9408,13 @@ export type GetToolInvocationPoliciesResponse = GetToolInvocationPoliciesRespons
 
 export type CreateToolInvocationPolicyData = {
     body: {
-        agentToolId: string;
-        argumentName: string;
-        operator: 'equal' | 'notEqual' | 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'regex';
-        value: string;
-        action: 'allow_when_context_is_untrusted' | 'block_always';
+        toolId: string;
+        conditions: Array<{
+            key: string;
+            operator: 'equal' | 'notEqual' | 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'regex';
+            value: string;
+        }>;
+        action: 'allow_when_context_is_untrusted' | 'block_when_context_is_untrusted' | 'block_always';
         reason?: string | null;
     };
     path?: never;
@@ -5010,11 +9487,13 @@ export type CreateToolInvocationPolicyResponses = {
      */
     200: {
         id: string;
-        agentToolId: string;
-        argumentName: string;
-        operator: 'equal' | 'notEqual' | 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'regex';
-        value: string;
-        action: 'allow_when_context_is_untrusted' | 'block_always';
+        toolId: string;
+        conditions: Array<{
+            key: string;
+            operator: 'equal' | 'notEqual' | 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'regex';
+            value: string;
+        }>;
+        action: 'allow_when_context_is_untrusted' | 'block_when_context_is_untrusted' | 'block_always';
         reason: string | null;
         createdAt: string;
         updatedAt: string;
@@ -5176,11 +9655,13 @@ export type GetToolInvocationPolicyResponses = {
      */
     200: {
         id: string;
-        agentToolId: string;
-        argumentName: string;
-        operator: 'equal' | 'notEqual' | 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'regex';
-        value: string;
-        action: 'allow_when_context_is_untrusted' | 'block_always';
+        toolId: string;
+        conditions: Array<{
+            key: string;
+            operator: 'equal' | 'notEqual' | 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'regex';
+            value: string;
+        }>;
+        action: 'allow_when_context_is_untrusted' | 'block_when_context_is_untrusted' | 'block_always';
         reason: string | null;
         createdAt: string;
         updatedAt: string;
@@ -5191,11 +9672,13 @@ export type GetToolInvocationPolicyResponse = GetToolInvocationPolicyResponses[k
 
 export type UpdateToolInvocationPolicyData = {
     body?: {
-        agentToolId?: string;
-        argumentName?: string;
-        operator?: 'equal' | 'notEqual' | 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'regex';
-        value?: string;
-        action?: 'allow_when_context_is_untrusted' | 'block_always';
+        toolId?: string;
+        conditions?: Array<{
+            key: string;
+            operator: 'equal' | 'notEqual' | 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'regex';
+            value: string;
+        }>;
+        action?: 'allow_when_context_is_untrusted' | 'block_when_context_is_untrusted' | 'block_always';
         reason?: string | null;
     };
     path: {
@@ -5270,11 +9753,13 @@ export type UpdateToolInvocationPolicyResponses = {
      */
     200: {
         id: string;
-        agentToolId: string;
-        argumentName: string;
-        operator: 'equal' | 'notEqual' | 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'regex';
-        value: string;
-        action: 'allow_when_context_is_untrusted' | 'block_always';
+        toolId: string;
+        conditions: Array<{
+            key: string;
+            operator: 'equal' | 'notEqual' | 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'regex';
+            value: string;
+        }>;
+        action: 'allow_when_context_is_untrusted' | 'block_when_context_is_untrusted' | 'block_always';
         reason: string | null;
         createdAt: string;
         updatedAt: string;
@@ -5355,12 +9840,14 @@ export type GetTrustedDataPoliciesResponses = {
      */
     200: Array<{
         id: string;
-        agentToolId: string;
-        description: string;
-        attributePath: string;
-        operator: 'equal' | 'notEqual' | 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'regex';
-        value: string;
-        action: 'block_always' | 'mark_as_trusted' | 'sanitize_with_dual_llm';
+        toolId: string;
+        description: string | null;
+        conditions: Array<{
+            key: string;
+            operator: 'equal' | 'notEqual' | 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'regex';
+            value: string;
+        }>;
+        action: 'block_always' | 'mark_as_trusted' | 'mark_as_untrusted' | 'sanitize_with_dual_llm';
         createdAt: string;
         updatedAt: string;
     }>;
@@ -5370,12 +9857,14 @@ export type GetTrustedDataPoliciesResponse = GetTrustedDataPoliciesResponses[key
 
 export type CreateTrustedDataPolicyData = {
     body: {
-        agentToolId: string;
-        description: string;
-        attributePath: string;
-        operator: 'equal' | 'notEqual' | 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'regex';
-        value: string;
-        action: 'block_always' | 'mark_as_trusted' | 'sanitize_with_dual_llm';
+        toolId: string;
+        description?: string | null;
+        conditions: Array<{
+            key: string;
+            operator: 'equal' | 'notEqual' | 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'regex';
+            value: string;
+        }>;
+        action: 'block_always' | 'mark_as_trusted' | 'mark_as_untrusted' | 'sanitize_with_dual_llm';
     };
     path?: never;
     query?: never;
@@ -5447,12 +9936,14 @@ export type CreateTrustedDataPolicyResponses = {
      */
     200: {
         id: string;
-        agentToolId: string;
-        description: string;
-        attributePath: string;
-        operator: 'equal' | 'notEqual' | 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'regex';
-        value: string;
-        action: 'block_always' | 'mark_as_trusted' | 'sanitize_with_dual_llm';
+        toolId: string;
+        description: string | null;
+        conditions: Array<{
+            key: string;
+            operator: 'equal' | 'notEqual' | 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'regex';
+            value: string;
+        }>;
+        action: 'block_always' | 'mark_as_trusted' | 'mark_as_untrusted' | 'sanitize_with_dual_llm';
         createdAt: string;
         updatedAt: string;
     };
@@ -5613,12 +10104,14 @@ export type GetTrustedDataPolicyResponses = {
      */
     200: {
         id: string;
-        agentToolId: string;
-        description: string;
-        attributePath: string;
-        operator: 'equal' | 'notEqual' | 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'regex';
-        value: string;
-        action: 'block_always' | 'mark_as_trusted' | 'sanitize_with_dual_llm';
+        toolId: string;
+        description: string | null;
+        conditions: Array<{
+            key: string;
+            operator: 'equal' | 'notEqual' | 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'regex';
+            value: string;
+        }>;
+        action: 'block_always' | 'mark_as_trusted' | 'mark_as_untrusted' | 'sanitize_with_dual_llm';
         createdAt: string;
         updatedAt: string;
     };
@@ -5628,12 +10121,14 @@ export type GetTrustedDataPolicyResponse = GetTrustedDataPolicyResponses[keyof G
 
 export type UpdateTrustedDataPolicyData = {
     body?: {
-        agentToolId?: string;
-        description?: string;
-        attributePath?: string;
-        operator?: 'equal' | 'notEqual' | 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'regex';
-        value?: string;
-        action?: 'block_always' | 'mark_as_trusted' | 'sanitize_with_dual_llm';
+        toolId?: string;
+        description?: string | null;
+        conditions?: Array<{
+            key: string;
+            operator: 'equal' | 'notEqual' | 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'regex';
+            value: string;
+        }>;
+        action?: 'block_always' | 'mark_as_trusted' | 'mark_as_untrusted' | 'sanitize_with_dual_llm';
     };
     path: {
         id: string;
@@ -5707,18 +10202,1795 @@ export type UpdateTrustedDataPolicyResponses = {
      */
     200: {
         id: string;
-        agentToolId: string;
-        description: string;
-        attributePath: string;
-        operator: 'equal' | 'notEqual' | 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'regex';
-        value: string;
-        action: 'block_always' | 'mark_as_trusted' | 'sanitize_with_dual_llm';
+        toolId: string;
+        description: string | null;
+        conditions: Array<{
+            key: string;
+            operator: 'equal' | 'notEqual' | 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'regex';
+            value: string;
+        }>;
+        action: 'block_always' | 'mark_as_trusted' | 'mark_as_untrusted' | 'sanitize_with_dual_llm';
         createdAt: string;
         updatedAt: string;
     };
 };
 
 export type UpdateTrustedDataPolicyResponse = UpdateTrustedDataPolicyResponses[keyof UpdateTrustedDataPolicyResponses];
+
+export type BulkUpsertDefaultCallPolicyData = {
+    body: {
+        toolIds: Array<string>;
+        action: 'allow_when_context_is_untrusted' | 'block_when_context_is_untrusted' | 'block_always';
+    };
+    path?: never;
+    query?: never;
+    url: '/api/tool-invocation/bulk-default';
+};
+
+export type BulkUpsertDefaultCallPolicyErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type BulkUpsertDefaultCallPolicyError = BulkUpsertDefaultCallPolicyErrors[keyof BulkUpsertDefaultCallPolicyErrors];
+
+export type BulkUpsertDefaultCallPolicyResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        updated: number;
+        created: number;
+    };
+};
+
+export type BulkUpsertDefaultCallPolicyResponse = BulkUpsertDefaultCallPolicyResponses[keyof BulkUpsertDefaultCallPolicyResponses];
+
+export type BulkUpsertDefaultResultPolicyData = {
+    body: {
+        toolIds: Array<string>;
+        action: 'mark_as_trusted' | 'mark_as_untrusted' | 'block_always' | 'sanitize_with_dual_llm';
+    };
+    path?: never;
+    query?: never;
+    url: '/api/trusted-data-policies/bulk-default';
+};
+
+export type BulkUpsertDefaultResultPolicyErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type BulkUpsertDefaultResultPolicyError = BulkUpsertDefaultResultPolicyErrors[keyof BulkUpsertDefaultResultPolicyErrors];
+
+export type BulkUpsertDefaultResultPolicyResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        updated: number;
+        created: number;
+    };
+};
+
+export type BulkUpsertDefaultResultPolicyResponse = BulkUpsertDefaultResultPolicyResponses[keyof BulkUpsertDefaultResultPolicyResponses];
+
+export type BedrockConverseWithDefaultAgentData = {
+    body: {
+        modelId: string;
+        messages?: Array<{
+            role: 'user' | 'assistant';
+            content: Array<{
+                text: string;
+            } | {
+                image: {
+                    format: 'png' | 'jpeg' | 'gif' | 'webp';
+                    source: {
+                        bytes: string;
+                    } | {
+                        s3Location: {
+                            uri: string;
+                            bucketOwner?: string;
+                        };
+                    };
+                };
+            } | {
+                document: {
+                    format: 'pdf' | 'csv' | 'doc' | 'docx' | 'xls' | 'xlsx' | 'html' | 'txt' | 'md';
+                    name: string;
+                    source: {
+                        bytes: string;
+                    } | {
+                        s3Location: {
+                            uri: string;
+                            bucketOwner?: string;
+                        };
+                    };
+                };
+            } | {
+                guardContent: {
+                    text: {
+                        text: string;
+                        qualifiers?: Array<'grounding_source' | 'query' | 'guard_content'>;
+                    };
+                };
+            } | {
+                toolUse: {
+                    toolUseId: string;
+                    name: string;
+                    input: {
+                        [key: string]: unknown;
+                    };
+                };
+            } | {
+                toolResult: {
+                    toolUseId: string;
+                    content: Array<{
+                        text: string;
+                    } | {
+                        image: {
+                            format: 'png' | 'jpeg' | 'gif' | 'webp';
+                            source: {
+                                bytes: string;
+                            } | {
+                                s3Location: {
+                                    uri: string;
+                                    bucketOwner?: string;
+                                };
+                            };
+                        };
+                    } | {
+                        json: {
+                            [key: string]: unknown;
+                        };
+                    } | {
+                        document: {
+                            format: 'pdf' | 'csv' | 'doc' | 'docx' | 'xls' | 'xlsx' | 'html' | 'txt' | 'md';
+                            name: string;
+                            source: {
+                                bytes: string;
+                            } | {
+                                s3Location: {
+                                    uri: string;
+                                    bucketOwner?: string;
+                                };
+                            };
+                        };
+                    }>;
+                    status?: 'success' | 'error';
+                };
+            }>;
+        }>;
+        system?: Array<{
+            text: string;
+        } | {
+            guardContent: {
+                text: {
+                    text: string;
+                    qualifiers?: Array<'grounding_source' | 'query' | 'guard_content'>;
+                };
+            };
+        }>;
+        inferenceConfig?: {
+            maxTokens?: number;
+            temperature?: number;
+            topP?: number;
+            stopSequences?: Array<string>;
+        };
+        toolConfig?: {
+            tools: Array<{
+                toolSpec: {
+                    name: string;
+                    description?: string;
+                    inputSchema: {
+                        json: {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            }>;
+            toolChoice?: {
+                auto?: {
+                    [key: string]: unknown;
+                };
+            } | {
+                any?: {
+                    [key: string]: unknown;
+                };
+            } | {
+                tool: {
+                    name: string;
+                };
+            };
+        };
+        guardrailConfig?: {
+            guardrailIdentifier: string;
+            guardrailVersion: string;
+            trace?: 'enabled' | 'disabled';
+        };
+        additionalModelRequestFields?: {
+            [key: string]: unknown;
+        };
+        additionalModelResponseFieldPaths?: Array<string>;
+        promptVariables?: {
+            [key: string]: {
+                text: string;
+            } | {
+                json: {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        performanceConfig?: {
+            latency?: 'optimized';
+        };
+        serviceTier?: {
+            type?: 'default' | 'throughput';
+        };
+        requestMetadata?: {
+            [key: string]: string;
+        };
+        _isStreaming?: boolean;
+    };
+    headers?: {
+        /**
+         * The user agent of the client
+         */
+        'user-agent'?: string;
+        /**
+         * Authorization header with Bearer token
+         */
+        authorization?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/v1/bedrock/converse';
+};
+
+export type BedrockConverseWithDefaultAgentErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type BedrockConverseWithDefaultAgentError = BedrockConverseWithDefaultAgentErrors[keyof BedrockConverseWithDefaultAgentErrors];
+
+export type BedrockConverseWithDefaultAgentResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        $metadata?: {
+            httpStatusCode?: number;
+            requestId?: string;
+            attempts?: number;
+            totalRetryDelay?: number;
+        };
+        output: {
+            message?: {
+                role: 'assistant';
+                content: Array<{
+                    text: string;
+                } | {
+                    toolUse: {
+                        toolUseId: string;
+                        name: string;
+                        input: {
+                            [key: string]: unknown;
+                        };
+                    };
+                }>;
+            };
+        };
+        stopReason: 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence' | 'guardrail_intervened' | 'content_filtered' | 'model_context_window_exceeded';
+        usage: {
+            inputTokens: number;
+            outputTokens: number;
+            totalTokens?: number;
+            cacheReadInputTokens?: number;
+            cacheWriteInputTokens?: number;
+        };
+        metrics?: {
+            latencyMs?: number;
+        };
+        additionalModelResponseFields?: {
+            [key: string]: unknown;
+        };
+        trace?: {
+            guardrail?: {
+                inputAssessment?: {
+                    [key: string]: unknown;
+                };
+                outputAssessments?: {
+                    [key: string]: unknown;
+                };
+                modelOutput?: Array<string>;
+                actionReason?: string;
+            };
+            promptRouter?: {
+                invokedModelId?: string;
+            };
+        };
+        performanceConfig?: {
+            latency?: 'optimized';
+        };
+        serviceTier?: {
+            type?: 'default' | 'throughput';
+        };
+    };
+};
+
+export type BedrockConverseWithDefaultAgentResponse = BedrockConverseWithDefaultAgentResponses[keyof BedrockConverseWithDefaultAgentResponses];
+
+export type BedrockConverseWithAgentData = {
+    body: {
+        modelId: string;
+        messages?: Array<{
+            role: 'user' | 'assistant';
+            content: Array<{
+                text: string;
+            } | {
+                image: {
+                    format: 'png' | 'jpeg' | 'gif' | 'webp';
+                    source: {
+                        bytes: string;
+                    } | {
+                        s3Location: {
+                            uri: string;
+                            bucketOwner?: string;
+                        };
+                    };
+                };
+            } | {
+                document: {
+                    format: 'pdf' | 'csv' | 'doc' | 'docx' | 'xls' | 'xlsx' | 'html' | 'txt' | 'md';
+                    name: string;
+                    source: {
+                        bytes: string;
+                    } | {
+                        s3Location: {
+                            uri: string;
+                            bucketOwner?: string;
+                        };
+                    };
+                };
+            } | {
+                guardContent: {
+                    text: {
+                        text: string;
+                        qualifiers?: Array<'grounding_source' | 'query' | 'guard_content'>;
+                    };
+                };
+            } | {
+                toolUse: {
+                    toolUseId: string;
+                    name: string;
+                    input: {
+                        [key: string]: unknown;
+                    };
+                };
+            } | {
+                toolResult: {
+                    toolUseId: string;
+                    content: Array<{
+                        text: string;
+                    } | {
+                        image: {
+                            format: 'png' | 'jpeg' | 'gif' | 'webp';
+                            source: {
+                                bytes: string;
+                            } | {
+                                s3Location: {
+                                    uri: string;
+                                    bucketOwner?: string;
+                                };
+                            };
+                        };
+                    } | {
+                        json: {
+                            [key: string]: unknown;
+                        };
+                    } | {
+                        document: {
+                            format: 'pdf' | 'csv' | 'doc' | 'docx' | 'xls' | 'xlsx' | 'html' | 'txt' | 'md';
+                            name: string;
+                            source: {
+                                bytes: string;
+                            } | {
+                                s3Location: {
+                                    uri: string;
+                                    bucketOwner?: string;
+                                };
+                            };
+                        };
+                    }>;
+                    status?: 'success' | 'error';
+                };
+            }>;
+        }>;
+        system?: Array<{
+            text: string;
+        } | {
+            guardContent: {
+                text: {
+                    text: string;
+                    qualifiers?: Array<'grounding_source' | 'query' | 'guard_content'>;
+                };
+            };
+        }>;
+        inferenceConfig?: {
+            maxTokens?: number;
+            temperature?: number;
+            topP?: number;
+            stopSequences?: Array<string>;
+        };
+        toolConfig?: {
+            tools: Array<{
+                toolSpec: {
+                    name: string;
+                    description?: string;
+                    inputSchema: {
+                        json: {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            }>;
+            toolChoice?: {
+                auto?: {
+                    [key: string]: unknown;
+                };
+            } | {
+                any?: {
+                    [key: string]: unknown;
+                };
+            } | {
+                tool: {
+                    name: string;
+                };
+            };
+        };
+        guardrailConfig?: {
+            guardrailIdentifier: string;
+            guardrailVersion: string;
+            trace?: 'enabled' | 'disabled';
+        };
+        additionalModelRequestFields?: {
+            [key: string]: unknown;
+        };
+        additionalModelResponseFieldPaths?: Array<string>;
+        promptVariables?: {
+            [key: string]: {
+                text: string;
+            } | {
+                json: {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        performanceConfig?: {
+            latency?: 'optimized';
+        };
+        serviceTier?: {
+            type?: 'default' | 'throughput';
+        };
+        requestMetadata?: {
+            [key: string]: string;
+        };
+        _isStreaming?: boolean;
+    };
+    headers?: {
+        /**
+         * The user agent of the client
+         */
+        'user-agent'?: string;
+        /**
+         * Authorization header with Bearer token
+         */
+        authorization?: string;
+    };
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/v1/bedrock/{agentId}/converse';
+};
+
+export type BedrockConverseWithAgentErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type BedrockConverseWithAgentError = BedrockConverseWithAgentErrors[keyof BedrockConverseWithAgentErrors];
+
+export type BedrockConverseWithAgentResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        $metadata?: {
+            httpStatusCode?: number;
+            requestId?: string;
+            attempts?: number;
+            totalRetryDelay?: number;
+        };
+        output: {
+            message?: {
+                role: 'assistant';
+                content: Array<{
+                    text: string;
+                } | {
+                    toolUse: {
+                        toolUseId: string;
+                        name: string;
+                        input: {
+                            [key: string]: unknown;
+                        };
+                    };
+                }>;
+            };
+        };
+        stopReason: 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence' | 'guardrail_intervened' | 'content_filtered' | 'model_context_window_exceeded';
+        usage: {
+            inputTokens: number;
+            outputTokens: number;
+            totalTokens?: number;
+            cacheReadInputTokens?: number;
+            cacheWriteInputTokens?: number;
+        };
+        metrics?: {
+            latencyMs?: number;
+        };
+        additionalModelResponseFields?: {
+            [key: string]: unknown;
+        };
+        trace?: {
+            guardrail?: {
+                inputAssessment?: {
+                    [key: string]: unknown;
+                };
+                outputAssessments?: {
+                    [key: string]: unknown;
+                };
+                modelOutput?: Array<string>;
+                actionReason?: string;
+            };
+            promptRouter?: {
+                invokedModelId?: string;
+            };
+        };
+        performanceConfig?: {
+            latency?: 'optimized';
+        };
+        serviceTier?: {
+            type?: 'default' | 'throughput';
+        };
+    };
+};
+
+export type BedrockConverseWithAgentResponse = BedrockConverseWithAgentResponses[keyof BedrockConverseWithAgentResponses];
+
+export type BedrockConverseStreamWithDefaultAgentData = {
+    body: {
+        modelId: string;
+        messages?: Array<{
+            role: 'user' | 'assistant';
+            content: Array<{
+                text: string;
+            } | {
+                image: {
+                    format: 'png' | 'jpeg' | 'gif' | 'webp';
+                    source: {
+                        bytes: string;
+                    } | {
+                        s3Location: {
+                            uri: string;
+                            bucketOwner?: string;
+                        };
+                    };
+                };
+            } | {
+                document: {
+                    format: 'pdf' | 'csv' | 'doc' | 'docx' | 'xls' | 'xlsx' | 'html' | 'txt' | 'md';
+                    name: string;
+                    source: {
+                        bytes: string;
+                    } | {
+                        s3Location: {
+                            uri: string;
+                            bucketOwner?: string;
+                        };
+                    };
+                };
+            } | {
+                guardContent: {
+                    text: {
+                        text: string;
+                        qualifiers?: Array<'grounding_source' | 'query' | 'guard_content'>;
+                    };
+                };
+            } | {
+                toolUse: {
+                    toolUseId: string;
+                    name: string;
+                    input: {
+                        [key: string]: unknown;
+                    };
+                };
+            } | {
+                toolResult: {
+                    toolUseId: string;
+                    content: Array<{
+                        text: string;
+                    } | {
+                        image: {
+                            format: 'png' | 'jpeg' | 'gif' | 'webp';
+                            source: {
+                                bytes: string;
+                            } | {
+                                s3Location: {
+                                    uri: string;
+                                    bucketOwner?: string;
+                                };
+                            };
+                        };
+                    } | {
+                        json: {
+                            [key: string]: unknown;
+                        };
+                    } | {
+                        document: {
+                            format: 'pdf' | 'csv' | 'doc' | 'docx' | 'xls' | 'xlsx' | 'html' | 'txt' | 'md';
+                            name: string;
+                            source: {
+                                bytes: string;
+                            } | {
+                                s3Location: {
+                                    uri: string;
+                                    bucketOwner?: string;
+                                };
+                            };
+                        };
+                    }>;
+                    status?: 'success' | 'error';
+                };
+            }>;
+        }>;
+        system?: Array<{
+            text: string;
+        } | {
+            guardContent: {
+                text: {
+                    text: string;
+                    qualifiers?: Array<'grounding_source' | 'query' | 'guard_content'>;
+                };
+            };
+        }>;
+        inferenceConfig?: {
+            maxTokens?: number;
+            temperature?: number;
+            topP?: number;
+            stopSequences?: Array<string>;
+        };
+        toolConfig?: {
+            tools: Array<{
+                toolSpec: {
+                    name: string;
+                    description?: string;
+                    inputSchema: {
+                        json: {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            }>;
+            toolChoice?: {
+                auto?: {
+                    [key: string]: unknown;
+                };
+            } | {
+                any?: {
+                    [key: string]: unknown;
+                };
+            } | {
+                tool: {
+                    name: string;
+                };
+            };
+        };
+        guardrailConfig?: {
+            guardrailIdentifier: string;
+            guardrailVersion: string;
+            trace?: 'enabled' | 'disabled';
+        };
+        additionalModelRequestFields?: {
+            [key: string]: unknown;
+        };
+        additionalModelResponseFieldPaths?: Array<string>;
+        promptVariables?: {
+            [key: string]: {
+                text: string;
+            } | {
+                json: {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        performanceConfig?: {
+            latency?: 'optimized';
+        };
+        serviceTier?: {
+            type?: 'default' | 'throughput';
+        };
+        requestMetadata?: {
+            [key: string]: string;
+        };
+        _isStreaming?: boolean;
+    };
+    headers?: {
+        /**
+         * The user agent of the client
+         */
+        'user-agent'?: string;
+        /**
+         * Authorization header with Bearer token
+         */
+        authorization?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/v1/bedrock/converse-stream';
+};
+
+export type BedrockConverseStreamWithDefaultAgentResponses = {
+    /**
+     * Default Response
+     */
+    200: unknown;
+};
+
+export type BedrockConverseStreamWithAgentData = {
+    body: {
+        modelId: string;
+        messages?: Array<{
+            role: 'user' | 'assistant';
+            content: Array<{
+                text: string;
+            } | {
+                image: {
+                    format: 'png' | 'jpeg' | 'gif' | 'webp';
+                    source: {
+                        bytes: string;
+                    } | {
+                        s3Location: {
+                            uri: string;
+                            bucketOwner?: string;
+                        };
+                    };
+                };
+            } | {
+                document: {
+                    format: 'pdf' | 'csv' | 'doc' | 'docx' | 'xls' | 'xlsx' | 'html' | 'txt' | 'md';
+                    name: string;
+                    source: {
+                        bytes: string;
+                    } | {
+                        s3Location: {
+                            uri: string;
+                            bucketOwner?: string;
+                        };
+                    };
+                };
+            } | {
+                guardContent: {
+                    text: {
+                        text: string;
+                        qualifiers?: Array<'grounding_source' | 'query' | 'guard_content'>;
+                    };
+                };
+            } | {
+                toolUse: {
+                    toolUseId: string;
+                    name: string;
+                    input: {
+                        [key: string]: unknown;
+                    };
+                };
+            } | {
+                toolResult: {
+                    toolUseId: string;
+                    content: Array<{
+                        text: string;
+                    } | {
+                        image: {
+                            format: 'png' | 'jpeg' | 'gif' | 'webp';
+                            source: {
+                                bytes: string;
+                            } | {
+                                s3Location: {
+                                    uri: string;
+                                    bucketOwner?: string;
+                                };
+                            };
+                        };
+                    } | {
+                        json: {
+                            [key: string]: unknown;
+                        };
+                    } | {
+                        document: {
+                            format: 'pdf' | 'csv' | 'doc' | 'docx' | 'xls' | 'xlsx' | 'html' | 'txt' | 'md';
+                            name: string;
+                            source: {
+                                bytes: string;
+                            } | {
+                                s3Location: {
+                                    uri: string;
+                                    bucketOwner?: string;
+                                };
+                            };
+                        };
+                    }>;
+                    status?: 'success' | 'error';
+                };
+            }>;
+        }>;
+        system?: Array<{
+            text: string;
+        } | {
+            guardContent: {
+                text: {
+                    text: string;
+                    qualifiers?: Array<'grounding_source' | 'query' | 'guard_content'>;
+                };
+            };
+        }>;
+        inferenceConfig?: {
+            maxTokens?: number;
+            temperature?: number;
+            topP?: number;
+            stopSequences?: Array<string>;
+        };
+        toolConfig?: {
+            tools: Array<{
+                toolSpec: {
+                    name: string;
+                    description?: string;
+                    inputSchema: {
+                        json: {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            }>;
+            toolChoice?: {
+                auto?: {
+                    [key: string]: unknown;
+                };
+            } | {
+                any?: {
+                    [key: string]: unknown;
+                };
+            } | {
+                tool: {
+                    name: string;
+                };
+            };
+        };
+        guardrailConfig?: {
+            guardrailIdentifier: string;
+            guardrailVersion: string;
+            trace?: 'enabled' | 'disabled';
+        };
+        additionalModelRequestFields?: {
+            [key: string]: unknown;
+        };
+        additionalModelResponseFieldPaths?: Array<string>;
+        promptVariables?: {
+            [key: string]: {
+                text: string;
+            } | {
+                json: {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        performanceConfig?: {
+            latency?: 'optimized';
+        };
+        serviceTier?: {
+            type?: 'default' | 'throughput';
+        };
+        requestMetadata?: {
+            [key: string]: string;
+        };
+        _isStreaming?: boolean;
+    };
+    headers?: {
+        /**
+         * The user agent of the client
+         */
+        'user-agent'?: string;
+        /**
+         * Authorization header with Bearer token
+         */
+        authorization?: string;
+    };
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/v1/bedrock/{agentId}/converse-stream';
+};
+
+export type BedrockConverseStreamWithAgentResponses = {
+    /**
+     * Default Response
+     */
+    200: unknown;
+};
+
+export type BedrockConverseWithAgentAndModelData = {
+    body?: {
+        modelId?: string;
+        messages?: Array<{
+            role: 'user' | 'assistant';
+            content: Array<{
+                text: string;
+            } | {
+                image: {
+                    format: 'png' | 'jpeg' | 'gif' | 'webp';
+                    source: {
+                        bytes: string;
+                    } | {
+                        s3Location: {
+                            uri: string;
+                            bucketOwner?: string;
+                        };
+                    };
+                };
+            } | {
+                document: {
+                    format: 'pdf' | 'csv' | 'doc' | 'docx' | 'xls' | 'xlsx' | 'html' | 'txt' | 'md';
+                    name: string;
+                    source: {
+                        bytes: string;
+                    } | {
+                        s3Location: {
+                            uri: string;
+                            bucketOwner?: string;
+                        };
+                    };
+                };
+            } | {
+                guardContent: {
+                    text: {
+                        text: string;
+                        qualifiers?: Array<'grounding_source' | 'query' | 'guard_content'>;
+                    };
+                };
+            } | {
+                toolUse: {
+                    toolUseId: string;
+                    name: string;
+                    input: {
+                        [key: string]: unknown;
+                    };
+                };
+            } | {
+                toolResult: {
+                    toolUseId: string;
+                    content: Array<{
+                        text: string;
+                    } | {
+                        image: {
+                            format: 'png' | 'jpeg' | 'gif' | 'webp';
+                            source: {
+                                bytes: string;
+                            } | {
+                                s3Location: {
+                                    uri: string;
+                                    bucketOwner?: string;
+                                };
+                            };
+                        };
+                    } | {
+                        json: {
+                            [key: string]: unknown;
+                        };
+                    } | {
+                        document: {
+                            format: 'pdf' | 'csv' | 'doc' | 'docx' | 'xls' | 'xlsx' | 'html' | 'txt' | 'md';
+                            name: string;
+                            source: {
+                                bytes: string;
+                            } | {
+                                s3Location: {
+                                    uri: string;
+                                    bucketOwner?: string;
+                                };
+                            };
+                        };
+                    }>;
+                    status?: 'success' | 'error';
+                };
+            }>;
+        }>;
+        system?: Array<{
+            text: string;
+        } | {
+            guardContent: {
+                text: {
+                    text: string;
+                    qualifiers?: Array<'grounding_source' | 'query' | 'guard_content'>;
+                };
+            };
+        }>;
+        inferenceConfig?: {
+            maxTokens?: number;
+            temperature?: number;
+            topP?: number;
+            stopSequences?: Array<string>;
+        };
+        toolConfig?: {
+            tools: Array<{
+                toolSpec: {
+                    name: string;
+                    description?: string;
+                    inputSchema: {
+                        json: {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            }>;
+            toolChoice?: {
+                auto?: {
+                    [key: string]: unknown;
+                };
+            } | {
+                any?: {
+                    [key: string]: unknown;
+                };
+            } | {
+                tool: {
+                    name: string;
+                };
+            };
+        };
+        guardrailConfig?: {
+            guardrailIdentifier: string;
+            guardrailVersion: string;
+            trace?: 'enabled' | 'disabled';
+        };
+        additionalModelRequestFields?: {
+            [key: string]: unknown;
+        };
+        additionalModelResponseFieldPaths?: Array<string>;
+        promptVariables?: {
+            [key: string]: {
+                text: string;
+            } | {
+                json: {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        performanceConfig?: {
+            latency?: 'optimized';
+        };
+        serviceTier?: {
+            type?: 'default' | 'throughput';
+        };
+        requestMetadata?: {
+            [key: string]: string;
+        };
+        _isStreaming?: boolean;
+    };
+    headers?: {
+        /**
+         * The user agent of the client
+         */
+        'user-agent'?: string;
+        /**
+         * Authorization header with Bearer token
+         */
+        authorization?: string;
+    };
+    path: {
+        agentId: string;
+        modelId: string;
+    };
+    query?: never;
+    url: '/v1/bedrock/{agentId}/model/{modelId}/converse';
+};
+
+export type BedrockConverseWithAgentAndModelErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type BedrockConverseWithAgentAndModelError = BedrockConverseWithAgentAndModelErrors[keyof BedrockConverseWithAgentAndModelErrors];
+
+export type BedrockConverseWithAgentAndModelResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        $metadata?: {
+            httpStatusCode?: number;
+            requestId?: string;
+            attempts?: number;
+            totalRetryDelay?: number;
+        };
+        output: {
+            message?: {
+                role: 'assistant';
+                content: Array<{
+                    text: string;
+                } | {
+                    toolUse: {
+                        toolUseId: string;
+                        name: string;
+                        input: {
+                            [key: string]: unknown;
+                        };
+                    };
+                }>;
+            };
+        };
+        stopReason: 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence' | 'guardrail_intervened' | 'content_filtered' | 'model_context_window_exceeded';
+        usage: {
+            inputTokens: number;
+            outputTokens: number;
+            totalTokens?: number;
+            cacheReadInputTokens?: number;
+            cacheWriteInputTokens?: number;
+        };
+        metrics?: {
+            latencyMs?: number;
+        };
+        additionalModelResponseFields?: {
+            [key: string]: unknown;
+        };
+        trace?: {
+            guardrail?: {
+                inputAssessment?: {
+                    [key: string]: unknown;
+                };
+                outputAssessments?: {
+                    [key: string]: unknown;
+                };
+                modelOutput?: Array<string>;
+                actionReason?: string;
+            };
+            promptRouter?: {
+                invokedModelId?: string;
+            };
+        };
+        performanceConfig?: {
+            latency?: 'optimized';
+        };
+        serviceTier?: {
+            type?: 'default' | 'throughput';
+        };
+    };
+};
+
+export type BedrockConverseWithAgentAndModelResponse = BedrockConverseWithAgentAndModelResponses[keyof BedrockConverseWithAgentAndModelResponses];
+
+export type BedrockConverseStreamWithAgentAndModelData = {
+    body?: {
+        modelId?: string;
+        messages?: Array<{
+            role: 'user' | 'assistant';
+            content: Array<{
+                text: string;
+            } | {
+                image: {
+                    format: 'png' | 'jpeg' | 'gif' | 'webp';
+                    source: {
+                        bytes: string;
+                    } | {
+                        s3Location: {
+                            uri: string;
+                            bucketOwner?: string;
+                        };
+                    };
+                };
+            } | {
+                document: {
+                    format: 'pdf' | 'csv' | 'doc' | 'docx' | 'xls' | 'xlsx' | 'html' | 'txt' | 'md';
+                    name: string;
+                    source: {
+                        bytes: string;
+                    } | {
+                        s3Location: {
+                            uri: string;
+                            bucketOwner?: string;
+                        };
+                    };
+                };
+            } | {
+                guardContent: {
+                    text: {
+                        text: string;
+                        qualifiers?: Array<'grounding_source' | 'query' | 'guard_content'>;
+                    };
+                };
+            } | {
+                toolUse: {
+                    toolUseId: string;
+                    name: string;
+                    input: {
+                        [key: string]: unknown;
+                    };
+                };
+            } | {
+                toolResult: {
+                    toolUseId: string;
+                    content: Array<{
+                        text: string;
+                    } | {
+                        image: {
+                            format: 'png' | 'jpeg' | 'gif' | 'webp';
+                            source: {
+                                bytes: string;
+                            } | {
+                                s3Location: {
+                                    uri: string;
+                                    bucketOwner?: string;
+                                };
+                            };
+                        };
+                    } | {
+                        json: {
+                            [key: string]: unknown;
+                        };
+                    } | {
+                        document: {
+                            format: 'pdf' | 'csv' | 'doc' | 'docx' | 'xls' | 'xlsx' | 'html' | 'txt' | 'md';
+                            name: string;
+                            source: {
+                                bytes: string;
+                            } | {
+                                s3Location: {
+                                    uri: string;
+                                    bucketOwner?: string;
+                                };
+                            };
+                        };
+                    }>;
+                    status?: 'success' | 'error';
+                };
+            }>;
+        }>;
+        system?: Array<{
+            text: string;
+        } | {
+            guardContent: {
+                text: {
+                    text: string;
+                    qualifiers?: Array<'grounding_source' | 'query' | 'guard_content'>;
+                };
+            };
+        }>;
+        inferenceConfig?: {
+            maxTokens?: number;
+            temperature?: number;
+            topP?: number;
+            stopSequences?: Array<string>;
+        };
+        toolConfig?: {
+            tools: Array<{
+                toolSpec: {
+                    name: string;
+                    description?: string;
+                    inputSchema: {
+                        json: {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            }>;
+            toolChoice?: {
+                auto?: {
+                    [key: string]: unknown;
+                };
+            } | {
+                any?: {
+                    [key: string]: unknown;
+                };
+            } | {
+                tool: {
+                    name: string;
+                };
+            };
+        };
+        guardrailConfig?: {
+            guardrailIdentifier: string;
+            guardrailVersion: string;
+            trace?: 'enabled' | 'disabled';
+        };
+        additionalModelRequestFields?: {
+            [key: string]: unknown;
+        };
+        additionalModelResponseFieldPaths?: Array<string>;
+        promptVariables?: {
+            [key: string]: {
+                text: string;
+            } | {
+                json: {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        performanceConfig?: {
+            latency?: 'optimized';
+        };
+        serviceTier?: {
+            type?: 'default' | 'throughput';
+        };
+        requestMetadata?: {
+            [key: string]: string;
+        };
+        _isStreaming?: boolean;
+    };
+    headers?: {
+        /**
+         * The user agent of the client
+         */
+        'user-agent'?: string;
+        /**
+         * Authorization header with Bearer token
+         */
+        authorization?: string;
+    };
+    path: {
+        agentId: string;
+        modelId: string;
+    };
+    query?: never;
+    url: '/v1/bedrock/{agentId}/model/{modelId}/converse-stream';
+};
+
+export type BedrockConverseStreamWithAgentAndModelResponses = {
+    /**
+     * Default Response
+     */
+    200: unknown;
+};
+
+export type CerebrasChatCompletionsWithDefaultAgentData = {
+    body?: MistralChatCompletionRequestInput;
+    headers: {
+        /**
+         * The user agent of the client
+         */
+        'user-agent'?: string;
+        /**
+         * Bearer token for OpenAI
+         */
+        authorization: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/v1/cerebras/chat/completions';
+};
+
+export type CerebrasChatCompletionsWithDefaultAgentErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type CerebrasChatCompletionsWithDefaultAgentError = CerebrasChatCompletionsWithDefaultAgentErrors[keyof CerebrasChatCompletionsWithDefaultAgentErrors];
+
+export type CerebrasChatCompletionsWithDefaultAgentResponses = {
+    /**
+     * Default Response
+     */
+    200: CerebrasChatCompletionResponse;
+};
+
+export type CerebrasChatCompletionsWithDefaultAgentResponse = CerebrasChatCompletionsWithDefaultAgentResponses[keyof CerebrasChatCompletionsWithDefaultAgentResponses];
+
+export type CerebrasChatCompletionsWithAgentData = {
+    body?: MistralChatCompletionRequestInput;
+    headers: {
+        /**
+         * The user agent of the client
+         */
+        'user-agent'?: string;
+        /**
+         * Bearer token for OpenAI
+         */
+        authorization: string;
+    };
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/v1/cerebras/{agentId}/chat/completions';
+};
+
+export type CerebrasChatCompletionsWithAgentErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type CerebrasChatCompletionsWithAgentError = CerebrasChatCompletionsWithAgentErrors[keyof CerebrasChatCompletionsWithAgentErrors];
+
+export type CerebrasChatCompletionsWithAgentResponses = {
+    /**
+     * Default Response
+     */
+    200: CerebrasChatCompletionResponse;
+};
+
+export type CerebrasChatCompletionsWithAgentResponse = CerebrasChatCompletionsWithAgentResponses[keyof CerebrasChatCompletionsWithAgentResponses];
 
 export type GetChatApiKeysData = {
     body?: never;
@@ -5794,11 +12066,12 @@ export type GetChatApiKeysResponses = {
         id: string;
         organizationId: string;
         name: string;
-        provider: 'anthropic' | 'openai' | 'gemini';
+        provider: 'anthropic' | 'bedrock' | 'cerebras' | 'cohere' | 'gemini' | 'mistral' | 'openai' | 'vllm' | 'ollama' | 'zhipuai';
         secretId: string | null;
         scope: 'personal' | 'team' | 'org_wide';
         userId: string | null;
         teamId: string | null;
+        isSystem: boolean;
         createdAt: string;
         updatedAt: string;
         teamName?: string | null;
@@ -5806,6 +12079,8 @@ export type GetChatApiKeysResponses = {
         vaultSecretPath?: string | null;
         vaultSecretKey?: string | null;
         secretStorageType?: 'vault' | 'external_vault' | 'database' | 'none';
+        bestModelId?: string | null;
+        isAgentKey?: boolean;
     }>;
 };
 
@@ -5814,7 +12089,7 @@ export type GetChatApiKeysResponse = GetChatApiKeysResponses[keyof GetChatApiKey
 export type CreateChatApiKeyData = {
     body: {
         name: string;
-        provider: 'anthropic' | 'openai' | 'gemini';
+        provider: 'anthropic' | 'bedrock' | 'cerebras' | 'cohere' | 'gemini' | 'mistral' | 'openai' | 'vllm' | 'ollama' | 'zhipuai';
         apiKey?: string;
         scope?: 'personal' | 'team' | 'org_wide';
         teamId?: string;
@@ -5893,11 +12168,12 @@ export type CreateChatApiKeyResponses = {
         id: string;
         organizationId: string;
         name: string;
-        provider: 'anthropic' | 'openai' | 'gemini';
+        provider: 'anthropic' | 'bedrock' | 'cerebras' | 'cohere' | 'gemini' | 'mistral' | 'openai' | 'vllm' | 'ollama' | 'zhipuai';
         secretId: string | null;
         scope: 'personal' | 'team' | 'org_wide';
         userId: string | null;
         teamId: string | null;
+        isSystem: boolean;
         createdAt: string;
         updatedAt: string;
     };
@@ -5909,7 +12185,8 @@ export type GetAvailableChatApiKeysData = {
     body?: never;
     path?: never;
     query?: {
-        provider?: 'anthropic' | 'openai' | 'gemini';
+        provider?: 'anthropic' | 'bedrock' | 'cerebras' | 'cohere' | 'gemini' | 'mistral' | 'openai' | 'vllm' | 'ollama' | 'zhipuai';
+        includeKeyId?: string;
     };
     url: '/api/chat-api-keys/available';
 };
@@ -5981,11 +12258,12 @@ export type GetAvailableChatApiKeysResponses = {
         id: string;
         organizationId: string;
         name: string;
-        provider: 'anthropic' | 'openai' | 'gemini';
+        provider: 'anthropic' | 'bedrock' | 'cerebras' | 'cohere' | 'gemini' | 'mistral' | 'openai' | 'vllm' | 'ollama' | 'zhipuai';
         secretId: string | null;
         scope: 'personal' | 'team' | 'org_wide';
         userId: string | null;
         teamId: string | null;
+        isSystem: boolean;
         createdAt: string;
         updatedAt: string;
         teamName?: string | null;
@@ -5993,6 +12271,8 @@ export type GetAvailableChatApiKeysResponses = {
         vaultSecretPath?: string | null;
         vaultSecretKey?: string | null;
         secretStorageType?: 'vault' | 'external_vault' | 'database' | 'none';
+        bestModelId?: string | null;
+        isAgentKey?: boolean;
     }>;
 };
 
@@ -6153,11 +12433,12 @@ export type GetChatApiKeyResponses = {
         id: string;
         organizationId: string;
         name: string;
-        provider: 'anthropic' | 'openai' | 'gemini';
+        provider: 'anthropic' | 'bedrock' | 'cerebras' | 'cohere' | 'gemini' | 'mistral' | 'openai' | 'vllm' | 'ollama' | 'zhipuai';
         secretId: string | null;
         scope: 'personal' | 'team' | 'org_wide';
         userId: string | null;
         teamId: string | null;
+        isSystem: boolean;
         createdAt: string;
         updatedAt: string;
         teamName?: string | null;
@@ -6165,6 +12446,8 @@ export type GetChatApiKeyResponses = {
         vaultSecretPath?: string | null;
         vaultSecretKey?: string | null;
         secretStorageType?: 'vault' | 'external_vault' | 'database' | 'none';
+        bestModelId?: string | null;
+        isAgentKey?: boolean;
     };
 };
 
@@ -6253,11 +12536,12 @@ export type UpdateChatApiKeyResponses = {
         id: string;
         organizationId: string;
         name: string;
-        provider: 'anthropic' | 'openai' | 'gemini';
+        provider: 'anthropic' | 'bedrock' | 'cerebras' | 'cohere' | 'gemini' | 'mistral' | 'openai' | 'vllm' | 'ollama' | 'zhipuai';
         secretId: string | null;
         scope: 'personal' | 'team' | 'org_wide';
         userId: string | null;
         teamId: string | null;
+        isSystem: boolean;
         createdAt: string;
         updatedAt: string;
     };
@@ -6269,7 +12553,7 @@ export type GetChatModelsData = {
     body?: never;
     path?: never;
     query?: {
-        provider?: 'anthropic' | 'openai' | 'gemini';
+        provider?: 'anthropic' | 'bedrock' | 'cerebras' | 'cohere' | 'gemini' | 'mistral' | 'openai' | 'vllm' | 'ollama' | 'zhipuai';
     };
     url: '/api/chat/models';
 };
@@ -6340,12 +12624,204 @@ export type GetChatModelsResponses = {
     200: Array<{
         id: string;
         displayName: string;
-        provider: 'anthropic' | 'openai' | 'gemini';
+        provider: 'anthropic' | 'bedrock' | 'cerebras' | 'cohere' | 'gemini' | 'mistral' | 'openai' | 'vllm' | 'ollama' | 'zhipuai';
         createdAt?: string;
+        capabilities?: {
+            contextLength: number | null;
+            inputModalities: Array<'text' | 'image' | 'audio' | 'video' | 'pdf'> | null;
+            outputModalities: Array<'text' | 'image' | 'audio'> | null;
+            supportsToolCalling: boolean | null;
+            pricePerMillionInput: string | null;
+            pricePerMillionOutput: string | null;
+        };
     }>;
 };
 
 export type GetChatModelsResponse = GetChatModelsResponses[keyof GetChatModelsResponses];
+
+export type SyncChatModelsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/chat/models/sync';
+};
+
+export type SyncChatModelsErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type SyncChatModelsError = SyncChatModelsErrors[keyof SyncChatModelsErrors];
+
+export type SyncChatModelsResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        success: boolean;
+    };
+};
+
+export type SyncChatModelsResponse = SyncChatModelsResponses[keyof SyncChatModelsResponses];
+
+export type GetModelsWithApiKeysData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/models';
+};
+
+export type GetModelsWithApiKeysErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type GetModelsWithApiKeysError = GetModelsWithApiKeysErrors[keyof GetModelsWithApiKeysErrors];
+
+export type GetModelsWithApiKeysResponses = {
+    /**
+     * Default Response
+     */
+    200: Array<{
+        id: string;
+        externalId: string;
+        provider: 'openai' | 'gemini' | 'anthropic' | 'bedrock' | 'cohere' | 'cerebras' | 'mistral' | 'vllm' | 'ollama' | 'zhipuai';
+        modelId: string;
+        description: string | null;
+        contextLength: number | null;
+        inputModalities: Array<'text' | 'image' | 'audio' | 'video' | 'pdf'> | null;
+        outputModalities: Array<'text' | 'image' | 'audio'> | null;
+        supportsToolCalling: boolean | null;
+        promptPricePerToken: string | null;
+        completionPricePerToken: string | null;
+        lastSyncedAt: string;
+        createdAt: string;
+        updatedAt: string;
+        isFastest: boolean;
+        isBest: boolean;
+        apiKeys: Array<{
+            id: string;
+            name: string;
+            provider: string;
+            scope: string;
+            isSystem: boolean;
+        }>;
+        capabilities: {
+            contextLength: number | null;
+            inputModalities: Array<'text' | 'image' | 'audio' | 'video' | 'pdf'> | null;
+            outputModalities: Array<'text' | 'image' | 'audio'> | null;
+            supportsToolCalling: boolean | null;
+            pricePerMillionInput: string | null;
+            pricePerMillionOutput: string | null;
+        };
+    }>;
+};
+
+export type GetModelsWithApiKeysResponse = GetModelsWithApiKeysResponses[keyof GetModelsWithApiKeysResponses];
 
 export type StreamChatData = {
     body: {
@@ -6417,10 +12893,91 @@ export type StreamChatErrors = {
 
 export type StreamChatError = StreamChatErrors[keyof StreamChatErrors];
 
+export type StopChatStreamData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/chat/conversations/{id}/stop';
+};
+
+export type StopChatStreamErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type StopChatStreamError = StopChatStreamErrors[keyof StopChatStreamErrors];
+
+export type StopChatStreamResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        stopped: boolean;
+    };
+};
+
+export type StopChatStreamResponse = StopChatStreamResponses[keyof StopChatStreamResponses];
+
 export type GetChatConversationsData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        search?: string;
+    };
     url: '/api/chat/conversations';
 };
 
@@ -6492,15 +13049,24 @@ export type GetChatConversationsResponses = {
         userId: string;
         organizationId: string;
         agentId: string;
-        promptId: string | null;
         chatApiKeyId: string | null;
         title: string | null;
         selectedModel: string;
+        selectedProvider: 'anthropic' | 'bedrock' | 'cerebras' | 'cohere' | 'gemini' | 'mistral' | 'openai' | 'vllm' | 'ollama' | 'zhipuai';
+        hasCustomToolSelection: boolean;
+        todoList: string | number | boolean | null | {
+            [key: string]: unknown;
+        } | Array<unknown> | null;
+        artifact: string | null;
         createdAt: string;
         updatedAt: string;
         agent: {
             id: string;
             name: string;
+            systemPrompt: string | null;
+            userPrompt: string | null;
+            agentType: 'profile' | 'mcp_gateway' | 'llm_proxy' | 'agent';
+            llmApiKeyId: string | null;
         };
         messages: Array<unknown>;
     }>;
@@ -6511,9 +13077,9 @@ export type GetChatConversationsResponse = GetChatConversationsResponses[keyof G
 export type CreateChatConversationData = {
     body: {
         agentId: string;
-        promptId?: string | null;
         title?: string | null;
         selectedModel?: string;
+        selectedProvider?: 'anthropic' | 'bedrock' | 'cerebras' | 'cohere' | 'gemini' | 'mistral' | 'openai' | 'vllm' | 'ollama' | 'zhipuai';
         chatApiKeyId?: string | null;
     };
     path?: never;
@@ -6589,15 +13155,24 @@ export type CreateChatConversationResponses = {
         userId: string;
         organizationId: string;
         agentId: string;
-        promptId: string | null;
         chatApiKeyId: string | null;
         title: string | null;
         selectedModel: string;
+        selectedProvider: 'anthropic' | 'bedrock' | 'cerebras' | 'cohere' | 'gemini' | 'mistral' | 'openai' | 'vllm' | 'ollama' | 'zhipuai';
+        hasCustomToolSelection: boolean;
+        todoList: string | number | boolean | null | {
+            [key: string]: unknown;
+        } | Array<unknown> | null;
+        artifact: string | null;
         createdAt: string;
         updatedAt: string;
         agent: {
             id: string;
             name: string;
+            systemPrompt: string | null;
+            userPrompt: string | null;
+            agentType: 'profile' | 'mcp_gateway' | 'llm_proxy' | 'agent';
+            llmApiKeyId: string | null;
         };
         messages: Array<unknown>;
     };
@@ -6761,15 +13336,24 @@ export type GetChatConversationResponses = {
         userId: string;
         organizationId: string;
         agentId: string;
-        promptId: string | null;
         chatApiKeyId: string | null;
         title: string | null;
         selectedModel: string;
+        selectedProvider: 'anthropic' | 'bedrock' | 'cerebras' | 'cohere' | 'gemini' | 'mistral' | 'openai' | 'vllm' | 'ollama' | 'zhipuai';
+        hasCustomToolSelection: boolean;
+        todoList: string | number | boolean | null | {
+            [key: string]: unknown;
+        } | Array<unknown> | null;
+        artifact: string | null;
         createdAt: string;
         updatedAt: string;
         agent: {
             id: string;
             name: string;
+            systemPrompt: string | null;
+            userPrompt: string | null;
+            agentType: 'profile' | 'mcp_gateway' | 'llm_proxy' | 'agent';
+            llmApiKeyId: string | null;
         };
         messages: Array<unknown>;
     };
@@ -6781,7 +13365,10 @@ export type UpdateChatConversationData = {
     body?: {
         title?: string | null;
         selectedModel?: string;
+        selectedProvider?: 'anthropic' | 'bedrock' | 'cerebras' | 'cohere' | 'gemini' | 'mistral' | 'openai' | 'vllm' | 'ollama' | 'zhipuai';
         chatApiKeyId?: string | null;
+        agentId?: string;
+        artifact?: string | null;
     };
     path: {
         id: string;
@@ -6858,15 +13445,24 @@ export type UpdateChatConversationResponses = {
         userId: string;
         organizationId: string;
         agentId: string;
-        promptId: string | null;
         chatApiKeyId: string | null;
         title: string | null;
         selectedModel: string;
+        selectedProvider: 'anthropic' | 'bedrock' | 'cerebras' | 'cohere' | 'gemini' | 'mistral' | 'openai' | 'vllm' | 'ollama' | 'zhipuai';
+        hasCustomToolSelection: boolean;
+        todoList: string | number | boolean | null | {
+            [key: string]: unknown;
+        } | Array<unknown> | null;
+        artifact: string | null;
         createdAt: string;
         updatedAt: string;
         agent: {
             id: string;
             name: string;
+            systemPrompt: string | null;
+            userPrompt: string | null;
+            agentType: 'profile' | 'mcp_gateway' | 'llm_proxy' | 'agent';
+            llmApiKeyId: string | null;
         };
         messages: Array<unknown>;
     };
@@ -7041,15 +13637,24 @@ export type GenerateChatConversationTitleResponses = {
         userId: string;
         organizationId: string;
         agentId: string;
-        promptId: string | null;
         chatApiKeyId: string | null;
         title: string | null;
         selectedModel: string;
+        selectedProvider: 'anthropic' | 'bedrock' | 'cerebras' | 'cohere' | 'gemini' | 'mistral' | 'openai' | 'vllm' | 'ollama' | 'zhipuai';
+        hasCustomToolSelection: boolean;
+        todoList: string | number | boolean | null | {
+            [key: string]: unknown;
+        } | Array<unknown> | null;
+        artifact: string | null;
         createdAt: string;
         updatedAt: string;
         agent: {
             id: string;
             name: string;
+            systemPrompt: string | null;
+            userPrompt: string | null;
+            agentType: 'profile' | 'mcp_gateway' | 'llm_proxy' | 'agent';
+            llmApiKeyId: string | null;
         };
         messages: Array<unknown>;
     };
@@ -7138,15 +13743,24 @@ export type UpdateChatMessageResponses = {
         userId: string;
         organizationId: string;
         agentId: string;
-        promptId: string | null;
         chatApiKeyId: string | null;
         title: string | null;
         selectedModel: string;
+        selectedProvider: 'anthropic' | 'bedrock' | 'cerebras' | 'cohere' | 'gemini' | 'mistral' | 'openai' | 'vllm' | 'ollama' | 'zhipuai';
+        hasCustomToolSelection: boolean;
+        todoList: string | number | boolean | null | {
+            [key: string]: unknown;
+        } | Array<unknown> | null;
+        artifact: string | null;
         createdAt: string;
         updatedAt: string;
         agent: {
             id: string;
             name: string;
+            systemPrompt: string | null;
+            userPrompt: string | null;
+            agentType: 'profile' | 'mcp_gateway' | 'llm_proxy' | 'agent';
+            llmApiKeyId: string | null;
         };
         messages: Array<unknown>;
     };
@@ -7394,6 +14008,723 @@ export type UpdateConversationEnabledToolsResponses = {
 };
 
 export type UpdateConversationEnabledToolsResponse = UpdateConversationEnabledToolsResponses[keyof UpdateConversationEnabledToolsResponses];
+
+export type PostApiWebhooksChatopsMsTeamsData = {
+    body?: unknown;
+    path?: never;
+    query?: never;
+    url: '/api/webhooks/chatops/ms-teams';
+};
+
+export type PostApiWebhooksChatopsMsTeamsErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: string;
+    };
+    /**
+     * Default Response
+     */
+    429: {
+        error: string;
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: string;
+    };
+};
+
+export type PostApiWebhooksChatopsMsTeamsError = PostApiWebhooksChatopsMsTeamsErrors[keyof PostApiWebhooksChatopsMsTeamsErrors];
+
+export type PostApiWebhooksChatopsMsTeamsResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        status: string;
+    } | {
+        success: boolean;
+    };
+};
+
+export type PostApiWebhooksChatopsMsTeamsResponse = PostApiWebhooksChatopsMsTeamsResponses[keyof PostApiWebhooksChatopsMsTeamsResponses];
+
+export type GetChatOpsStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/chatops/status';
+};
+
+export type GetChatOpsStatusErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type GetChatOpsStatusError = GetChatOpsStatusErrors[keyof GetChatOpsStatusErrors];
+
+export type GetChatOpsStatusResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        providers: Array<{
+            id: string;
+            displayName: string;
+            configured: boolean;
+            credentials?: {
+                appId: string;
+                appSecret: string;
+                tenantId: string;
+            };
+        }>;
+    };
+};
+
+export type GetChatOpsStatusResponse = GetChatOpsStatusResponses[keyof GetChatOpsStatusResponses];
+
+export type ListChatOpsBindingsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/chatops/bindings';
+};
+
+export type ListChatOpsBindingsErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type ListChatOpsBindingsError = ListChatOpsBindingsErrors[keyof ListChatOpsBindingsErrors];
+
+export type ListChatOpsBindingsResponses = {
+    /**
+     * Default Response
+     */
+    200: Array<{
+        id: string;
+        organizationId: string;
+        provider: 'ms-teams';
+        channelId: string;
+        workspaceId: string | null;
+        channelName: string | null;
+        workspaceName: string | null;
+        agentId: string | null;
+        createdAt: string;
+        updatedAt: string;
+    }>;
+};
+
+export type ListChatOpsBindingsResponse = ListChatOpsBindingsResponses[keyof ListChatOpsBindingsResponses];
+
+export type DeleteChatOpsBindingData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/chatops/bindings/{id}';
+};
+
+export type DeleteChatOpsBindingErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type DeleteChatOpsBindingError = DeleteChatOpsBindingErrors[keyof DeleteChatOpsBindingErrors];
+
+export type DeleteChatOpsBindingResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        success: boolean;
+    };
+};
+
+export type DeleteChatOpsBindingResponse = DeleteChatOpsBindingResponses[keyof DeleteChatOpsBindingResponses];
+
+export type UpdateChatOpsBindingData = {
+    body?: {
+        agentId?: string | null;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/chatops/bindings/{id}';
+};
+
+export type UpdateChatOpsBindingErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type UpdateChatOpsBindingError = UpdateChatOpsBindingErrors[keyof UpdateChatOpsBindingErrors];
+
+export type UpdateChatOpsBindingResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        id: string;
+        organizationId: string;
+        provider: 'ms-teams';
+        channelId: string;
+        workspaceId: string | null;
+        channelName: string | null;
+        workspaceName: string | null;
+        agentId: string | null;
+        createdAt: string;
+        updatedAt: string;
+    };
+};
+
+export type UpdateChatOpsBindingResponse = UpdateChatOpsBindingResponses[keyof UpdateChatOpsBindingResponses];
+
+export type UpdateChatOpsConfigInQuickstartData = {
+    body?: {
+        enabled?: boolean;
+        appId?: string;
+        appSecret?: string;
+        tenantId?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/chatops/config/ms-teams';
+};
+
+export type UpdateChatOpsConfigInQuickstartErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type UpdateChatOpsConfigInQuickstartError = UpdateChatOpsConfigInQuickstartErrors[keyof UpdateChatOpsConfigInQuickstartErrors];
+
+export type UpdateChatOpsConfigInQuickstartResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        success: boolean;
+    };
+};
+
+export type UpdateChatOpsConfigInQuickstartResponse = UpdateChatOpsConfigInQuickstartResponses[keyof UpdateChatOpsConfigInQuickstartResponses];
+
+export type RefreshChatOpsChannelDiscoveryData = {
+    body: {
+        provider: 'ms-teams';
+    };
+    path?: never;
+    query?: never;
+    url: '/api/chatops/channel-discovery/refresh';
+};
+
+export type RefreshChatOpsChannelDiscoveryErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type RefreshChatOpsChannelDiscoveryError = RefreshChatOpsChannelDiscoveryErrors[keyof RefreshChatOpsChannelDiscoveryErrors];
+
+export type RefreshChatOpsChannelDiscoveryResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        success: boolean;
+    };
+};
+
+export type RefreshChatOpsChannelDiscoveryResponse = RefreshChatOpsChannelDiscoveryResponses[keyof RefreshChatOpsChannelDiscoveryResponses];
+
+export type CohereChatWithDefaultAgentData = {
+    body?: CohereChatRequestInput;
+    headers?: {
+        /**
+         * The user agent of the client
+         */
+        'user-agent'?: string;
+        /**
+         * Bearer token for API auth
+         */
+        authorization?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/v1/cohere/chat';
+};
+
+export type CohereChatWithDefaultAgentErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type CohereChatWithDefaultAgentError = CohereChatWithDefaultAgentErrors[keyof CohereChatWithDefaultAgentErrors];
+
+export type CohereChatWithDefaultAgentResponses = {
+    /**
+     * Default Response
+     */
+    200: CohereChatResponse;
+};
+
+export type CohereChatWithDefaultAgentResponse = CohereChatWithDefaultAgentResponses[keyof CohereChatWithDefaultAgentResponses];
+
+export type CohereChatWithAgentData = {
+    body?: CohereChatRequestInput;
+    headers?: {
+        /**
+         * The user agent of the client
+         */
+        'user-agent'?: string;
+        /**
+         * Bearer token for API auth
+         */
+        authorization?: string;
+    };
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/v1/cohere/{agentId}/chat';
+};
+
+export type CohereChatWithAgentErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type CohereChatWithAgentError = CohereChatWithAgentErrors[keyof CohereChatWithAgentErrors];
+
+export type CohereChatWithAgentResponses = {
+    /**
+     * Default Response
+     */
+    200: CohereChatResponse;
+};
+
+export type CohereChatWithAgentResponse = CohereChatWithAgentResponses[keyof CohereChatWithAgentResponses];
 
 export type GetDefaultDualLlmConfigData = {
     body?: never;
@@ -8098,6 +15429,32 @@ export type GetFeaturesResponses = {
         byosEnabled: boolean;
         byosVaultKvVersion: '1' | '2';
         geminiVertexAiEnabled: boolean;
+        vllmEnabled: boolean;
+        ollamaEnabled: boolean;
+        mistralEnabled: boolean;
+        globalToolPolicy: 'permissive' | 'restrictive';
+        browserStreamingEnabled: boolean;
+        incomingEmail: {
+            enabled: boolean;
+            provider?: 'outlook';
+            displayName?: string;
+            emailDomain?: string;
+        };
+        knowledgeGraph: {
+            enabled: boolean;
+            provider?: 'lightrag';
+            displayName?: string;
+        };
+        mcpServerBaseImage: string;
+        orchestratorK8sNamespace: string;
+        isQuickstart: boolean;
+        ngrokDomain: string;
+        chatops: {
+            msTeamsEnabled: boolean;
+            msTeamsAppId: boolean;
+            msTeamsAppSecret: boolean;
+            msTeamsTenantId: boolean;
+        };
     };
 };
 
@@ -8447,6 +15804,455 @@ export type PostV1GeminiByAgentIdV1BetaModelsByModelStreamGenerateContentErrors 
 
 export type PostV1GeminiByAgentIdV1BetaModelsByModelStreamGenerateContentError = PostV1GeminiByAgentIdV1BetaModelsByModelStreamGenerateContentErrors[keyof PostV1GeminiByAgentIdV1BetaModelsByModelStreamGenerateContentErrors];
 
+export type PostApiWebhooksIncomingEmailData = {
+    body?: unknown;
+    path?: never;
+    query?: never;
+    url: '/api/webhooks/incoming-email';
+};
+
+export type PostApiWebhooksIncomingEmailErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: string;
+    };
+    /**
+     * Default Response
+     */
+    429: {
+        error: string;
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: string;
+    };
+};
+
+export type PostApiWebhooksIncomingEmailError = PostApiWebhooksIncomingEmailErrors[keyof PostApiWebhooksIncomingEmailErrors];
+
+export type PostApiWebhooksIncomingEmailResponses = {
+    /**
+     * Default Response
+     */
+    200: string | {
+        success: boolean;
+        processed?: number;
+        errors?: number;
+    };
+};
+
+export type PostApiWebhooksIncomingEmailResponse = PostApiWebhooksIncomingEmailResponses[keyof PostApiWebhooksIncomingEmailResponses];
+
+export type GetAgentEmailAddressData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/email-address';
+};
+
+export type GetAgentEmailAddressErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type GetAgentEmailAddressError = GetAgentEmailAddressErrors[keyof GetAgentEmailAddressErrors];
+
+export type GetAgentEmailAddressResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        providerEnabled: boolean;
+        emailAddress: string | null;
+        agentIncomingEmailEnabled: boolean;
+        agentSecurityMode: 'private' | 'internal' | 'public';
+        agentAllowedDomain: string | null;
+    };
+};
+
+export type GetAgentEmailAddressResponse = GetAgentEmailAddressResponses[keyof GetAgentEmailAddressResponses];
+
+export type GetIncomingEmailStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/incoming-email/status';
+};
+
+export type GetIncomingEmailStatusErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type GetIncomingEmailStatusError = GetIncomingEmailStatusErrors[keyof GetIncomingEmailStatusErrors];
+
+export type GetIncomingEmailStatusResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        isActive: boolean;
+        subscription: {
+            id: string;
+            subscriptionId: string;
+            provider: string;
+            webhookUrl: string;
+            expiresAt: string;
+        } | null;
+    };
+};
+
+export type GetIncomingEmailStatusResponse = GetIncomingEmailStatusResponses[keyof GetIncomingEmailStatusResponses];
+
+export type SetupIncomingEmailWebhookData = {
+    body: {
+        webhookUrl: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/incoming-email/setup';
+};
+
+export type SetupIncomingEmailWebhookErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type SetupIncomingEmailWebhookError = SetupIncomingEmailWebhookErrors[keyof SetupIncomingEmailWebhookErrors];
+
+export type SetupIncomingEmailWebhookResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        success: boolean;
+        subscriptionId?: string;
+        expiresAt?: string;
+        message?: string;
+    };
+};
+
+export type SetupIncomingEmailWebhookResponse = SetupIncomingEmailWebhookResponses[keyof SetupIncomingEmailWebhookResponses];
+
+export type RenewIncomingEmailSubscriptionData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/incoming-email/renew';
+};
+
+export type RenewIncomingEmailSubscriptionErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type RenewIncomingEmailSubscriptionError = RenewIncomingEmailSubscriptionErrors[keyof RenewIncomingEmailSubscriptionErrors];
+
+export type RenewIncomingEmailSubscriptionResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        success: boolean;
+        subscriptionId?: string;
+        expiresAt?: string;
+        message?: string;
+    };
+};
+
+export type RenewIncomingEmailSubscriptionResponse = RenewIncomingEmailSubscriptionResponses[keyof RenewIncomingEmailSubscriptionResponses];
+
+export type DeleteIncomingEmailSubscriptionData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/incoming-email/subscription';
+};
+
+export type DeleteIncomingEmailSubscriptionErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type DeleteIncomingEmailSubscriptionError = DeleteIncomingEmailSubscriptionErrors[keyof DeleteIncomingEmailSubscriptionErrors];
+
+export type DeleteIncomingEmailSubscriptionResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        success: boolean;
+    };
+};
+
+export type DeleteIncomingEmailSubscriptionResponse = DeleteIncomingEmailSubscriptionResponses[keyof DeleteIncomingEmailSubscriptionResponses];
+
 export type GetInteractionsData = {
     body?: never;
     path?: never;
@@ -8463,6 +16269,18 @@ export type GetInteractionsData = {
          * Filter by user ID (from X-Archestra-User-Id header)
          */
         userId?: string;
+        /**
+         * Filter by session ID
+         */
+        sessionId?: string;
+        /**
+         * Filter by start date (ISO 8601 format)
+         */
+        startDate?: string;
+        /**
+         * Filter by end date (ISO 8601 format)
+         */
+        endDate?: string;
         limit?: number;
         offset?: number;
         sortBy?: 'createdAt' | 'profileId' | 'externalAgentId' | 'model' | 'userId';
@@ -8539,12 +16357,16 @@ export type GetInteractionsResponses = {
             id: string;
             profileId: string;
             externalAgentId: string | null;
+            executionId: string | null;
             userId: string | null;
-            request: OpenAiChatCompletionRequest;
-            processedRequest?: OpenAiChatCompletionRequest | null;
+            sessionId: string | null;
+            sessionSource: string | null;
+            request: MistralChatCompletionRequest;
+            processedRequest?: MistralChatCompletionRequest | null;
             response: OpenAiChatCompletionResponse;
             type: 'openai:chatCompletions';
             model: string | null;
+            baselineModel: string | null;
             inputTokens: number | null;
             outputTokens: number | null;
             baselineCost: string | null;
@@ -8552,17 +16374,24 @@ export type GetInteractionsResponses = {
             toonTokensBefore: number | null;
             toonTokensAfter: number | null;
             toonCostSavings: string | null;
+            toonSkipReason: string | null;
             createdAt: string;
+            requestType?: 'main' | 'subagent';
+            externalAgentIdLabel?: string | null;
         } | {
             id: string;
             profileId: string;
             externalAgentId: string | null;
+            executionId: string | null;
             userId: string | null;
+            sessionId: string | null;
+            sessionSource: string | null;
             request: GeminiGenerateContentRequest;
             processedRequest?: GeminiGenerateContentRequest | null;
             response: GeminiGenerateContentResponse;
             type: 'gemini:generateContent';
             model: string | null;
+            baselineModel: string | null;
             inputTokens: number | null;
             outputTokens: number | null;
             baselineCost: string | null;
@@ -8570,17 +16399,24 @@ export type GetInteractionsResponses = {
             toonTokensBefore: number | null;
             toonTokensAfter: number | null;
             toonCostSavings: string | null;
+            toonSkipReason: string | null;
             createdAt: string;
+            requestType?: 'main' | 'subagent';
+            externalAgentIdLabel?: string | null;
         } | {
             id: string;
             profileId: string;
             externalAgentId: string | null;
+            executionId: string | null;
             userId: string | null;
+            sessionId: string | null;
+            sessionSource: string | null;
             request: AnthropicMessagesRequest;
             processedRequest?: AnthropicMessagesRequest | null;
             response: AnthropicMessagesResponse;
             type: 'anthropic:messages';
             model: string | null;
+            baselineModel: string | null;
             inputTokens: number | null;
             outputTokens: number | null;
             baselineCost: string | null;
@@ -8588,7 +16424,549 @@ export type GetInteractionsResponses = {
             toonTokensBefore: number | null;
             toonTokensAfter: number | null;
             toonCostSavings: string | null;
+            toonSkipReason: string | null;
             createdAt: string;
+            requestType?: 'main' | 'subagent';
+            externalAgentIdLabel?: string | null;
+        } | {
+            id: string;
+            profileId: string;
+            externalAgentId: string | null;
+            executionId: string | null;
+            userId: string | null;
+            sessionId: string | null;
+            sessionSource: string | null;
+            request: {
+                modelId: string;
+                messages?: Array<{
+                    role: 'user' | 'assistant';
+                    content: Array<{
+                        text: string;
+                    } | {
+                        image: {
+                            format: 'png' | 'jpeg' | 'gif' | 'webp';
+                            source: {
+                                bytes: string;
+                            } | {
+                                s3Location: {
+                                    uri: string;
+                                    bucketOwner?: string;
+                                };
+                            };
+                        };
+                    } | {
+                        document: {
+                            format: 'pdf' | 'csv' | 'doc' | 'docx' | 'xls' | 'xlsx' | 'html' | 'txt' | 'md';
+                            name: string;
+                            source: {
+                                bytes: string;
+                            } | {
+                                s3Location: {
+                                    uri: string;
+                                    bucketOwner?: string;
+                                };
+                            };
+                        };
+                    } | {
+                        guardContent: {
+                            text: {
+                                text: string;
+                                qualifiers?: Array<'grounding_source' | 'query' | 'guard_content'>;
+                            };
+                        };
+                    } | {
+                        toolUse: {
+                            toolUseId: string;
+                            name: string;
+                            input: {
+                                [key: string]: unknown;
+                            };
+                        };
+                    } | {
+                        toolResult: {
+                            toolUseId: string;
+                            content: Array<{
+                                text: string;
+                            } | {
+                                image: {
+                                    format: 'png' | 'jpeg' | 'gif' | 'webp';
+                                    source: {
+                                        bytes: string;
+                                    } | {
+                                        s3Location: {
+                                            uri: string;
+                                            bucketOwner?: string;
+                                        };
+                                    };
+                                };
+                            } | {
+                                json: {
+                                    [key: string]: unknown;
+                                };
+                            } | {
+                                document: {
+                                    format: 'pdf' | 'csv' | 'doc' | 'docx' | 'xls' | 'xlsx' | 'html' | 'txt' | 'md';
+                                    name: string;
+                                    source: {
+                                        bytes: string;
+                                    } | {
+                                        s3Location: {
+                                            uri: string;
+                                            bucketOwner?: string;
+                                        };
+                                    };
+                                };
+                            }>;
+                            status?: 'success' | 'error';
+                        };
+                    }>;
+                }>;
+                system?: Array<{
+                    text: string;
+                } | {
+                    guardContent: {
+                        text: {
+                            text: string;
+                            qualifiers?: Array<'grounding_source' | 'query' | 'guard_content'>;
+                        };
+                    };
+                }>;
+                inferenceConfig?: {
+                    maxTokens?: number;
+                    temperature?: number;
+                    topP?: number;
+                    stopSequences?: Array<string>;
+                };
+                toolConfig?: {
+                    tools: Array<{
+                        toolSpec: {
+                            name: string;
+                            description?: string;
+                            inputSchema: {
+                                json: {
+                                    [key: string]: unknown;
+                                };
+                            };
+                        };
+                    }>;
+                    toolChoice?: {
+                        auto?: {
+                            [key: string]: never;
+                        };
+                    } | {
+                        any?: {
+                            [key: string]: never;
+                        };
+                    } | {
+                        tool: {
+                            name: string;
+                        };
+                    };
+                };
+                guardrailConfig?: {
+                    guardrailIdentifier: string;
+                    guardrailVersion: string;
+                    trace?: 'enabled' | 'disabled';
+                };
+                additionalModelRequestFields?: {
+                    [key: string]: unknown;
+                };
+                additionalModelResponseFieldPaths?: Array<string>;
+                promptVariables?: {
+                    [key: string]: {
+                        text: string;
+                    } | {
+                        json: {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+                performanceConfig?: {
+                    latency?: 'optimized';
+                };
+                serviceTier?: {
+                    type?: 'default' | 'throughput';
+                };
+                requestMetadata?: {
+                    [key: string]: string;
+                };
+                _isStreaming?: boolean;
+            };
+            processedRequest?: {
+                modelId: string;
+                messages?: Array<{
+                    role: 'user' | 'assistant';
+                    content: Array<{
+                        text: string;
+                    } | {
+                        image: {
+                            format: 'png' | 'jpeg' | 'gif' | 'webp';
+                            source: {
+                                bytes: string;
+                            } | {
+                                s3Location: {
+                                    uri: string;
+                                    bucketOwner?: string;
+                                };
+                            };
+                        };
+                    } | {
+                        document: {
+                            format: 'pdf' | 'csv' | 'doc' | 'docx' | 'xls' | 'xlsx' | 'html' | 'txt' | 'md';
+                            name: string;
+                            source: {
+                                bytes: string;
+                            } | {
+                                s3Location: {
+                                    uri: string;
+                                    bucketOwner?: string;
+                                };
+                            };
+                        };
+                    } | {
+                        guardContent: {
+                            text: {
+                                text: string;
+                                qualifiers?: Array<'grounding_source' | 'query' | 'guard_content'>;
+                            };
+                        };
+                    } | {
+                        toolUse: {
+                            toolUseId: string;
+                            name: string;
+                            input: {
+                                [key: string]: unknown;
+                            };
+                        };
+                    } | {
+                        toolResult: {
+                            toolUseId: string;
+                            content: Array<{
+                                text: string;
+                            } | {
+                                image: {
+                                    format: 'png' | 'jpeg' | 'gif' | 'webp';
+                                    source: {
+                                        bytes: string;
+                                    } | {
+                                        s3Location: {
+                                            uri: string;
+                                            bucketOwner?: string;
+                                        };
+                                    };
+                                };
+                            } | {
+                                json: {
+                                    [key: string]: unknown;
+                                };
+                            } | {
+                                document: {
+                                    format: 'pdf' | 'csv' | 'doc' | 'docx' | 'xls' | 'xlsx' | 'html' | 'txt' | 'md';
+                                    name: string;
+                                    source: {
+                                        bytes: string;
+                                    } | {
+                                        s3Location: {
+                                            uri: string;
+                                            bucketOwner?: string;
+                                        };
+                                    };
+                                };
+                            }>;
+                            status?: 'success' | 'error';
+                        };
+                    }>;
+                }>;
+                system?: Array<{
+                    text: string;
+                } | {
+                    guardContent: {
+                        text: {
+                            text: string;
+                            qualifiers?: Array<'grounding_source' | 'query' | 'guard_content'>;
+                        };
+                    };
+                }>;
+                inferenceConfig?: {
+                    maxTokens?: number;
+                    temperature?: number;
+                    topP?: number;
+                    stopSequences?: Array<string>;
+                };
+                toolConfig?: {
+                    tools: Array<{
+                        toolSpec: {
+                            name: string;
+                            description?: string;
+                            inputSchema: {
+                                json: {
+                                    [key: string]: unknown;
+                                };
+                            };
+                        };
+                    }>;
+                    toolChoice?: {
+                        auto?: {
+                            [key: string]: never;
+                        };
+                    } | {
+                        any?: {
+                            [key: string]: never;
+                        };
+                    } | {
+                        tool: {
+                            name: string;
+                        };
+                    };
+                };
+                guardrailConfig?: {
+                    guardrailIdentifier: string;
+                    guardrailVersion: string;
+                    trace?: 'enabled' | 'disabled';
+                };
+                additionalModelRequestFields?: {
+                    [key: string]: unknown;
+                };
+                additionalModelResponseFieldPaths?: Array<string>;
+                promptVariables?: {
+                    [key: string]: {
+                        text: string;
+                    } | {
+                        json: {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+                performanceConfig?: {
+                    latency?: 'optimized';
+                };
+                serviceTier?: {
+                    type?: 'default' | 'throughput';
+                };
+                requestMetadata?: {
+                    [key: string]: string;
+                };
+                _isStreaming?: boolean;
+            } | null;
+            response: {
+                $metadata?: {
+                    httpStatusCode?: number;
+                    requestId?: string;
+                    attempts?: number;
+                    totalRetryDelay?: number;
+                };
+                output: {
+                    message?: {
+                        role: 'assistant';
+                        content: Array<{
+                            text: string;
+                        } | {
+                            toolUse: {
+                                toolUseId: string;
+                                name: string;
+                                input: {
+                                    [key: string]: unknown;
+                                };
+                            };
+                        }>;
+                    };
+                };
+                stopReason: 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence' | 'guardrail_intervened' | 'content_filtered' | 'model_context_window_exceeded';
+                usage: {
+                    inputTokens: number;
+                    outputTokens: number;
+                    totalTokens?: number;
+                    cacheReadInputTokens?: number;
+                    cacheWriteInputTokens?: number;
+                };
+                metrics?: {
+                    latencyMs?: number;
+                };
+                additionalModelResponseFields?: {
+                    [key: string]: unknown;
+                };
+                trace?: {
+                    guardrail?: {
+                        inputAssessment?: {
+                            [key: string]: unknown;
+                        };
+                        outputAssessments?: {
+                            [key: string]: unknown;
+                        };
+                        modelOutput?: Array<string>;
+                        actionReason?: string;
+                    };
+                    promptRouter?: {
+                        invokedModelId?: string;
+                    };
+                };
+                performanceConfig?: {
+                    latency?: 'optimized';
+                };
+                serviceTier?: {
+                    type?: 'default' | 'throughput';
+                };
+            };
+            type: 'bedrock:converse';
+            model: string | null;
+            baselineModel: string | null;
+            inputTokens: number | null;
+            outputTokens: number | null;
+            baselineCost: string | null;
+            cost: string | null;
+            toonTokensBefore: number | null;
+            toonTokensAfter: number | null;
+            toonCostSavings: string | null;
+            toonSkipReason: string | null;
+            createdAt: string;
+            requestType?: 'main' | 'subagent';
+            externalAgentIdLabel?: string | null;
+        } | {
+            id: string;
+            profileId: string;
+            externalAgentId: string | null;
+            executionId: string | null;
+            userId: string | null;
+            sessionId: string | null;
+            sessionSource: string | null;
+            request: MistralChatCompletionRequest;
+            processedRequest?: MistralChatCompletionRequest | null;
+            response: CerebrasChatCompletionResponse;
+            type: 'cerebras:chatCompletions';
+            model: string | null;
+            baselineModel: string | null;
+            inputTokens: number | null;
+            outputTokens: number | null;
+            baselineCost: string | null;
+            cost: string | null;
+            toonTokensBefore: number | null;
+            toonTokensAfter: number | null;
+            toonCostSavings: string | null;
+            toonSkipReason: string | null;
+            createdAt: string;
+            requestType?: 'main' | 'subagent';
+            externalAgentIdLabel?: string | null;
+        } | {
+            id: string;
+            profileId: string;
+            externalAgentId: string | null;
+            executionId: string | null;
+            userId: string | null;
+            sessionId: string | null;
+            sessionSource: string | null;
+            request: MistralChatCompletionRequest;
+            processedRequest?: MistralChatCompletionRequest | null;
+            response: MistralChatCompletionResponse;
+            type: 'mistral:chatCompletions';
+            model: string | null;
+            baselineModel: string | null;
+            inputTokens: number | null;
+            outputTokens: number | null;
+            baselineCost: string | null;
+            cost: string | null;
+            toonTokensBefore: number | null;
+            toonTokensAfter: number | null;
+            toonCostSavings: string | null;
+            toonSkipReason: string | null;
+            createdAt: string;
+            requestType?: 'main' | 'subagent';
+            externalAgentIdLabel?: string | null;
+        } | {
+            id: string;
+            profileId: string;
+            externalAgentId: string | null;
+            executionId: string | null;
+            userId: string | null;
+            sessionId: string | null;
+            sessionSource: string | null;
+            request: VllmChatCompletionRequest;
+            processedRequest?: VllmChatCompletionRequest | null;
+            response: VllmChatCompletionResponse;
+            type: 'vllm:chatCompletions';
+            model: string | null;
+            baselineModel: string | null;
+            inputTokens: number | null;
+            outputTokens: number | null;
+            baselineCost: string | null;
+            cost: string | null;
+            toonTokensBefore: number | null;
+            toonTokensAfter: number | null;
+            toonCostSavings: string | null;
+            toonSkipReason: string | null;
+            createdAt: string;
+        } | {
+            id: string;
+            profileId: string;
+            externalAgentId: string | null;
+            executionId: string | null;
+            userId: string | null;
+            sessionId: string | null;
+            sessionSource: string | null;
+            request: OllamaChatCompletionRequest;
+            processedRequest?: OllamaChatCompletionRequest | null;
+            response: OllamaChatCompletionResponse;
+            type: 'ollama:chatCompletions';
+            model: string | null;
+            baselineModel: string | null;
+            inputTokens: number | null;
+            outputTokens: number | null;
+            baselineCost: string | null;
+            cost: string | null;
+            toonTokensBefore: number | null;
+            toonTokensAfter: number | null;
+            toonCostSavings: string | null;
+            toonSkipReason: string | null;
+            createdAt: string;
+        } | {
+            id: string;
+            profileId: string;
+            externalAgentId: string | null;
+            executionId: string | null;
+            userId: string | null;
+            sessionId: string | null;
+            sessionSource: string | null;
+            request: CohereChatRequest;
+            processedRequest?: CohereChatRequest | null;
+            response: CohereChatResponse;
+            type: 'cohere:chat';
+            model: string | null;
+            baselineModel: string | null;
+            inputTokens: number | null;
+            outputTokens: number | null;
+            baselineCost: string | null;
+            cost: string | null;
+            toonTokensBefore: number | null;
+            toonTokensAfter: number | null;
+            toonCostSavings: string | null;
+            toonSkipReason: string | null;
+            createdAt: string;
+            requestType?: 'main' | 'subagent';
+            externalAgentIdLabel?: string | null;
+        } | {
+            id: string;
+            profileId: string;
+            externalAgentId: string | null;
+            executionId: string | null;
+            userId: string | null;
+            sessionId: string | null;
+            sessionSource: string | null;
+            request: ZhipuaiChatCompletionRequest;
+            processedRequest?: ZhipuaiChatCompletionRequest | null;
+            response: ZhipuaiChatCompletionResponse;
+            type: 'zhipuai:chatCompletions';
+            model: string | null;
+            baselineModel: string | null;
+            inputTokens: number | null;
+            outputTokens: number | null;
+            baselineCost: string | null;
+            cost: string | null;
+            toonTokensBefore: number | null;
+            toonTokensAfter: number | null;
+            toonCostSavings: string | null;
+            toonSkipReason: string | null;
+            createdAt: string;
+            requestType?: 'main' | 'subagent';
+            externalAgentIdLabel?: string | null;
         }>;
         pagination: {
             currentPage: number;
@@ -8602,6 +16980,146 @@ export type GetInteractionsResponses = {
 };
 
 export type GetInteractionsResponse = GetInteractionsResponses[keyof GetInteractionsResponses];
+
+export type GetInteractionSessionsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Filter by profile ID (internal Archestra profile)
+         */
+        profileId?: string;
+        /**
+         * Filter by user ID (from X-Archestra-User-Id header)
+         */
+        userId?: string;
+        /**
+         * Filter by session ID
+         */
+        sessionId?: string;
+        /**
+         * Filter by start date (ISO 8601 format)
+         */
+        startDate?: string;
+        /**
+         * Filter by end date (ISO 8601 format)
+         */
+        endDate?: string;
+        /**
+         * Free-text search across session content (case-insensitive)
+         */
+        search?: string;
+        limit?: number;
+        offset?: number;
+    };
+    url: '/api/interactions/sessions';
+};
+
+export type GetInteractionSessionsErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type GetInteractionSessionsError = GetInteractionSessionsErrors[keyof GetInteractionSessionsErrors];
+
+export type GetInteractionSessionsResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        data: Array<{
+            sessionId: string | null;
+            sessionSource: string | null;
+            interactionId: string | null;
+            requestCount: number;
+            totalInputTokens: number;
+            totalOutputTokens: number;
+            totalCost: string | null;
+            totalBaselineCost: string | null;
+            totalToonCostSavings: string | null;
+            toonSkipReasonCounts: {
+                applied: number;
+                notEnabled: number;
+                notEffective: number;
+                noToolResults: number;
+            };
+            firstRequestTime: string;
+            lastRequestTime: string;
+            models: Array<string>;
+            profileId: string;
+            profileName: string | null;
+            externalAgentIds: Array<string>;
+            externalAgentIdLabels: Array<string | null>;
+            userNames: Array<string>;
+            lastInteractionRequest: unknown;
+            lastInteractionType: string | null;
+            conversationTitle: string | null;
+            claudeCodeTitle: string | null;
+        }>;
+        pagination: {
+            currentPage: number;
+            limit: number;
+            total: number;
+            totalPages: number;
+            hasNext: boolean;
+            hasPrev: boolean;
+        };
+    };
+};
+
+export type GetInteractionSessionsResponse = GetInteractionSessionsResponses[keyof GetInteractionSessionsResponses];
 
 export type GetUniqueExternalAgentIdsData = {
     body?: never;
@@ -8673,7 +17191,10 @@ export type GetUniqueExternalAgentIdsResponses = {
     /**
      * Default Response
      */
-    200: Array<string>;
+    200: Array<{
+        id: string;
+        displayName: string;
+    }>;
 };
 
 export type GetUniqueExternalAgentIdsResponse = GetUniqueExternalAgentIdsResponses[keyof GetUniqueExternalAgentIdsResponses];
@@ -8832,12 +17353,16 @@ export type GetInteractionResponses = {
         id: string;
         profileId: string;
         externalAgentId: string | null;
+        executionId: string | null;
         userId: string | null;
-        request: OpenAiChatCompletionRequest;
-        processedRequest?: OpenAiChatCompletionRequest | null;
+        sessionId: string | null;
+        sessionSource: string | null;
+        request: MistralChatCompletionRequest;
+        processedRequest?: MistralChatCompletionRequest | null;
         response: OpenAiChatCompletionResponse;
         type: 'openai:chatCompletions';
         model: string | null;
+        baselineModel: string | null;
         inputTokens: number | null;
         outputTokens: number | null;
         baselineCost: string | null;
@@ -8845,17 +17370,24 @@ export type GetInteractionResponses = {
         toonTokensBefore: number | null;
         toonTokensAfter: number | null;
         toonCostSavings: string | null;
+        toonSkipReason: string | null;
         createdAt: string;
+        requestType?: 'main' | 'subagent';
+        externalAgentIdLabel?: string | null;
     } | {
         id: string;
         profileId: string;
         externalAgentId: string | null;
+        executionId: string | null;
         userId: string | null;
+        sessionId: string | null;
+        sessionSource: string | null;
         request: GeminiGenerateContentRequest;
         processedRequest?: GeminiGenerateContentRequest | null;
         response: GeminiGenerateContentResponse;
         type: 'gemini:generateContent';
         model: string | null;
+        baselineModel: string | null;
         inputTokens: number | null;
         outputTokens: number | null;
         baselineCost: string | null;
@@ -8863,17 +17395,24 @@ export type GetInteractionResponses = {
         toonTokensBefore: number | null;
         toonTokensAfter: number | null;
         toonCostSavings: string | null;
+        toonSkipReason: string | null;
         createdAt: string;
+        requestType?: 'main' | 'subagent';
+        externalAgentIdLabel?: string | null;
     } | {
         id: string;
         profileId: string;
         externalAgentId: string | null;
+        executionId: string | null;
         userId: string | null;
+        sessionId: string | null;
+        sessionSource: string | null;
         request: AnthropicMessagesRequest;
         processedRequest?: AnthropicMessagesRequest | null;
         response: AnthropicMessagesResponse;
         type: 'anthropic:messages';
         model: string | null;
+        baselineModel: string | null;
         inputTokens: number | null;
         outputTokens: number | null;
         baselineCost: string | null;
@@ -8881,7 +17420,549 @@ export type GetInteractionResponses = {
         toonTokensBefore: number | null;
         toonTokensAfter: number | null;
         toonCostSavings: string | null;
+        toonSkipReason: string | null;
         createdAt: string;
+        requestType?: 'main' | 'subagent';
+        externalAgentIdLabel?: string | null;
+    } | {
+        id: string;
+        profileId: string;
+        externalAgentId: string | null;
+        executionId: string | null;
+        userId: string | null;
+        sessionId: string | null;
+        sessionSource: string | null;
+        request: {
+            modelId: string;
+            messages?: Array<{
+                role: 'user' | 'assistant';
+                content: Array<{
+                    text: string;
+                } | {
+                    image: {
+                        format: 'png' | 'jpeg' | 'gif' | 'webp';
+                        source: {
+                            bytes: string;
+                        } | {
+                            s3Location: {
+                                uri: string;
+                                bucketOwner?: string;
+                            };
+                        };
+                    };
+                } | {
+                    document: {
+                        format: 'pdf' | 'csv' | 'doc' | 'docx' | 'xls' | 'xlsx' | 'html' | 'txt' | 'md';
+                        name: string;
+                        source: {
+                            bytes: string;
+                        } | {
+                            s3Location: {
+                                uri: string;
+                                bucketOwner?: string;
+                            };
+                        };
+                    };
+                } | {
+                    guardContent: {
+                        text: {
+                            text: string;
+                            qualifiers?: Array<'grounding_source' | 'query' | 'guard_content'>;
+                        };
+                    };
+                } | {
+                    toolUse: {
+                        toolUseId: string;
+                        name: string;
+                        input: {
+                            [key: string]: unknown;
+                        };
+                    };
+                } | {
+                    toolResult: {
+                        toolUseId: string;
+                        content: Array<{
+                            text: string;
+                        } | {
+                            image: {
+                                format: 'png' | 'jpeg' | 'gif' | 'webp';
+                                source: {
+                                    bytes: string;
+                                } | {
+                                    s3Location: {
+                                        uri: string;
+                                        bucketOwner?: string;
+                                    };
+                                };
+                            };
+                        } | {
+                            json: {
+                                [key: string]: unknown;
+                            };
+                        } | {
+                            document: {
+                                format: 'pdf' | 'csv' | 'doc' | 'docx' | 'xls' | 'xlsx' | 'html' | 'txt' | 'md';
+                                name: string;
+                                source: {
+                                    bytes: string;
+                                } | {
+                                    s3Location: {
+                                        uri: string;
+                                        bucketOwner?: string;
+                                    };
+                                };
+                            };
+                        }>;
+                        status?: 'success' | 'error';
+                    };
+                }>;
+            }>;
+            system?: Array<{
+                text: string;
+            } | {
+                guardContent: {
+                    text: {
+                        text: string;
+                        qualifiers?: Array<'grounding_source' | 'query' | 'guard_content'>;
+                    };
+                };
+            }>;
+            inferenceConfig?: {
+                maxTokens?: number;
+                temperature?: number;
+                topP?: number;
+                stopSequences?: Array<string>;
+            };
+            toolConfig?: {
+                tools: Array<{
+                    toolSpec: {
+                        name: string;
+                        description?: string;
+                        inputSchema: {
+                            json: {
+                                [key: string]: unknown;
+                            };
+                        };
+                    };
+                }>;
+                toolChoice?: {
+                    auto?: {
+                        [key: string]: never;
+                    };
+                } | {
+                    any?: {
+                        [key: string]: never;
+                    };
+                } | {
+                    tool: {
+                        name: string;
+                    };
+                };
+            };
+            guardrailConfig?: {
+                guardrailIdentifier: string;
+                guardrailVersion: string;
+                trace?: 'enabled' | 'disabled';
+            };
+            additionalModelRequestFields?: {
+                [key: string]: unknown;
+            };
+            additionalModelResponseFieldPaths?: Array<string>;
+            promptVariables?: {
+                [key: string]: {
+                    text: string;
+                } | {
+                    json: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            performanceConfig?: {
+                latency?: 'optimized';
+            };
+            serviceTier?: {
+                type?: 'default' | 'throughput';
+            };
+            requestMetadata?: {
+                [key: string]: string;
+            };
+            _isStreaming?: boolean;
+        };
+        processedRequest?: {
+            modelId: string;
+            messages?: Array<{
+                role: 'user' | 'assistant';
+                content: Array<{
+                    text: string;
+                } | {
+                    image: {
+                        format: 'png' | 'jpeg' | 'gif' | 'webp';
+                        source: {
+                            bytes: string;
+                        } | {
+                            s3Location: {
+                                uri: string;
+                                bucketOwner?: string;
+                            };
+                        };
+                    };
+                } | {
+                    document: {
+                        format: 'pdf' | 'csv' | 'doc' | 'docx' | 'xls' | 'xlsx' | 'html' | 'txt' | 'md';
+                        name: string;
+                        source: {
+                            bytes: string;
+                        } | {
+                            s3Location: {
+                                uri: string;
+                                bucketOwner?: string;
+                            };
+                        };
+                    };
+                } | {
+                    guardContent: {
+                        text: {
+                            text: string;
+                            qualifiers?: Array<'grounding_source' | 'query' | 'guard_content'>;
+                        };
+                    };
+                } | {
+                    toolUse: {
+                        toolUseId: string;
+                        name: string;
+                        input: {
+                            [key: string]: unknown;
+                        };
+                    };
+                } | {
+                    toolResult: {
+                        toolUseId: string;
+                        content: Array<{
+                            text: string;
+                        } | {
+                            image: {
+                                format: 'png' | 'jpeg' | 'gif' | 'webp';
+                                source: {
+                                    bytes: string;
+                                } | {
+                                    s3Location: {
+                                        uri: string;
+                                        bucketOwner?: string;
+                                    };
+                                };
+                            };
+                        } | {
+                            json: {
+                                [key: string]: unknown;
+                            };
+                        } | {
+                            document: {
+                                format: 'pdf' | 'csv' | 'doc' | 'docx' | 'xls' | 'xlsx' | 'html' | 'txt' | 'md';
+                                name: string;
+                                source: {
+                                    bytes: string;
+                                } | {
+                                    s3Location: {
+                                        uri: string;
+                                        bucketOwner?: string;
+                                    };
+                                };
+                            };
+                        }>;
+                        status?: 'success' | 'error';
+                    };
+                }>;
+            }>;
+            system?: Array<{
+                text: string;
+            } | {
+                guardContent: {
+                    text: {
+                        text: string;
+                        qualifiers?: Array<'grounding_source' | 'query' | 'guard_content'>;
+                    };
+                };
+            }>;
+            inferenceConfig?: {
+                maxTokens?: number;
+                temperature?: number;
+                topP?: number;
+                stopSequences?: Array<string>;
+            };
+            toolConfig?: {
+                tools: Array<{
+                    toolSpec: {
+                        name: string;
+                        description?: string;
+                        inputSchema: {
+                            json: {
+                                [key: string]: unknown;
+                            };
+                        };
+                    };
+                }>;
+                toolChoice?: {
+                    auto?: {
+                        [key: string]: never;
+                    };
+                } | {
+                    any?: {
+                        [key: string]: never;
+                    };
+                } | {
+                    tool: {
+                        name: string;
+                    };
+                };
+            };
+            guardrailConfig?: {
+                guardrailIdentifier: string;
+                guardrailVersion: string;
+                trace?: 'enabled' | 'disabled';
+            };
+            additionalModelRequestFields?: {
+                [key: string]: unknown;
+            };
+            additionalModelResponseFieldPaths?: Array<string>;
+            promptVariables?: {
+                [key: string]: {
+                    text: string;
+                } | {
+                    json: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            performanceConfig?: {
+                latency?: 'optimized';
+            };
+            serviceTier?: {
+                type?: 'default' | 'throughput';
+            };
+            requestMetadata?: {
+                [key: string]: string;
+            };
+            _isStreaming?: boolean;
+        } | null;
+        response: {
+            $metadata?: {
+                httpStatusCode?: number;
+                requestId?: string;
+                attempts?: number;
+                totalRetryDelay?: number;
+            };
+            output: {
+                message?: {
+                    role: 'assistant';
+                    content: Array<{
+                        text: string;
+                    } | {
+                        toolUse: {
+                            toolUseId: string;
+                            name: string;
+                            input: {
+                                [key: string]: unknown;
+                            };
+                        };
+                    }>;
+                };
+            };
+            stopReason: 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence' | 'guardrail_intervened' | 'content_filtered' | 'model_context_window_exceeded';
+            usage: {
+                inputTokens: number;
+                outputTokens: number;
+                totalTokens?: number;
+                cacheReadInputTokens?: number;
+                cacheWriteInputTokens?: number;
+            };
+            metrics?: {
+                latencyMs?: number;
+            };
+            additionalModelResponseFields?: {
+                [key: string]: unknown;
+            };
+            trace?: {
+                guardrail?: {
+                    inputAssessment?: {
+                        [key: string]: unknown;
+                    };
+                    outputAssessments?: {
+                        [key: string]: unknown;
+                    };
+                    modelOutput?: Array<string>;
+                    actionReason?: string;
+                };
+                promptRouter?: {
+                    invokedModelId?: string;
+                };
+            };
+            performanceConfig?: {
+                latency?: 'optimized';
+            };
+            serviceTier?: {
+                type?: 'default' | 'throughput';
+            };
+        };
+        type: 'bedrock:converse';
+        model: string | null;
+        baselineModel: string | null;
+        inputTokens: number | null;
+        outputTokens: number | null;
+        baselineCost: string | null;
+        cost: string | null;
+        toonTokensBefore: number | null;
+        toonTokensAfter: number | null;
+        toonCostSavings: string | null;
+        toonSkipReason: string | null;
+        createdAt: string;
+        requestType?: 'main' | 'subagent';
+        externalAgentIdLabel?: string | null;
+    } | {
+        id: string;
+        profileId: string;
+        externalAgentId: string | null;
+        executionId: string | null;
+        userId: string | null;
+        sessionId: string | null;
+        sessionSource: string | null;
+        request: MistralChatCompletionRequest;
+        processedRequest?: MistralChatCompletionRequest | null;
+        response: CerebrasChatCompletionResponse;
+        type: 'cerebras:chatCompletions';
+        model: string | null;
+        baselineModel: string | null;
+        inputTokens: number | null;
+        outputTokens: number | null;
+        baselineCost: string | null;
+        cost: string | null;
+        toonTokensBefore: number | null;
+        toonTokensAfter: number | null;
+        toonCostSavings: string | null;
+        toonSkipReason: string | null;
+        createdAt: string;
+        requestType?: 'main' | 'subagent';
+        externalAgentIdLabel?: string | null;
+    } | {
+        id: string;
+        profileId: string;
+        externalAgentId: string | null;
+        executionId: string | null;
+        userId: string | null;
+        sessionId: string | null;
+        sessionSource: string | null;
+        request: MistralChatCompletionRequest;
+        processedRequest?: MistralChatCompletionRequest | null;
+        response: MistralChatCompletionResponse;
+        type: 'mistral:chatCompletions';
+        model: string | null;
+        baselineModel: string | null;
+        inputTokens: number | null;
+        outputTokens: number | null;
+        baselineCost: string | null;
+        cost: string | null;
+        toonTokensBefore: number | null;
+        toonTokensAfter: number | null;
+        toonCostSavings: string | null;
+        toonSkipReason: string | null;
+        createdAt: string;
+        requestType?: 'main' | 'subagent';
+        externalAgentIdLabel?: string | null;
+    } | {
+        id: string;
+        profileId: string;
+        externalAgentId: string | null;
+        executionId: string | null;
+        userId: string | null;
+        sessionId: string | null;
+        sessionSource: string | null;
+        request: VllmChatCompletionRequest;
+        processedRequest?: VllmChatCompletionRequest | null;
+        response: VllmChatCompletionResponse;
+        type: 'vllm:chatCompletions';
+        model: string | null;
+        baselineModel: string | null;
+        inputTokens: number | null;
+        outputTokens: number | null;
+        baselineCost: string | null;
+        cost: string | null;
+        toonTokensBefore: number | null;
+        toonTokensAfter: number | null;
+        toonCostSavings: string | null;
+        toonSkipReason: string | null;
+        createdAt: string;
+    } | {
+        id: string;
+        profileId: string;
+        externalAgentId: string | null;
+        executionId: string | null;
+        userId: string | null;
+        sessionId: string | null;
+        sessionSource: string | null;
+        request: OllamaChatCompletionRequest;
+        processedRequest?: OllamaChatCompletionRequest | null;
+        response: OllamaChatCompletionResponse;
+        type: 'ollama:chatCompletions';
+        model: string | null;
+        baselineModel: string | null;
+        inputTokens: number | null;
+        outputTokens: number | null;
+        baselineCost: string | null;
+        cost: string | null;
+        toonTokensBefore: number | null;
+        toonTokensAfter: number | null;
+        toonCostSavings: string | null;
+        toonSkipReason: string | null;
+        createdAt: string;
+    } | {
+        id: string;
+        profileId: string;
+        externalAgentId: string | null;
+        executionId: string | null;
+        userId: string | null;
+        sessionId: string | null;
+        sessionSource: string | null;
+        request: CohereChatRequest;
+        processedRequest?: CohereChatRequest | null;
+        response: CohereChatResponse;
+        type: 'cohere:chat';
+        model: string | null;
+        baselineModel: string | null;
+        inputTokens: number | null;
+        outputTokens: number | null;
+        baselineCost: string | null;
+        cost: string | null;
+        toonTokensBefore: number | null;
+        toonTokensAfter: number | null;
+        toonCostSavings: string | null;
+        toonSkipReason: string | null;
+        createdAt: string;
+        requestType?: 'main' | 'subagent';
+        externalAgentIdLabel?: string | null;
+    } | {
+        id: string;
+        profileId: string;
+        externalAgentId: string | null;
+        executionId: string | null;
+        userId: string | null;
+        sessionId: string | null;
+        sessionSource: string | null;
+        request: ZhipuaiChatCompletionRequest;
+        processedRequest?: ZhipuaiChatCompletionRequest | null;
+        response: ZhipuaiChatCompletionResponse;
+        type: 'zhipuai:chatCompletions';
+        model: string | null;
+        baselineModel: string | null;
+        inputTokens: number | null;
+        outputTokens: number | null;
+        baselineCost: string | null;
+        cost: string | null;
+        toonTokensBefore: number | null;
+        toonTokensAfter: number | null;
+        toonCostSavings: string | null;
+        toonSkipReason: string | null;
+        createdAt: string;
+        requestType?: 'main' | 'subagent';
+        externalAgentIdLabel?: string | null;
     };
 };
 
@@ -8974,7 +18055,7 @@ export type GetInternalMcpCatalogResponses = {
             required: boolean;
             description?: string;
         }> | null;
-        serverType: 'local' | 'remote';
+        serverType: 'local' | 'remote' | 'builtin';
         serverUrl: string | null;
         docsUrl: string | null;
         clientSecretId: string | null;
@@ -8990,12 +18071,16 @@ export type GetInternalMcpCatalogResponses = {
                 required?: boolean;
                 description?: string;
                 default?: string | number | boolean;
+                mounted?: boolean;
             }>;
             dockerImage?: string;
+            serviceAccount?: string;
             transportType?: 'stdio' | 'streamable-http';
             httpPort?: number;
             httpPath?: string;
+            nodePort?: number;
         } | null;
+        deploymentSpecYaml: string | null;
         userConfig: {
             [key: string]: {
                 type: 'string' | 'number' | 'boolean' | 'directory' | 'file';
@@ -9040,6 +18125,7 @@ export type GetInternalMcpCatalogResponse = GetInternalMcpCatalogResponses[keyof
 
 export type CreateInternalMcpCatalogItemData = {
     body: {
+        id?: string;
         name: string;
         version?: string | null;
         description?: string | null;
@@ -9055,7 +18141,7 @@ export type CreateInternalMcpCatalogItemData = {
             required: boolean;
             description?: string;
         }> | null;
-        serverType: 'local' | 'remote';
+        serverType: 'local' | 'remote' | 'builtin';
         serverUrl?: string | null;
         docsUrl?: string | null;
         clientSecretId?: string | null;
@@ -9071,13 +18157,16 @@ export type CreateInternalMcpCatalogItemData = {
                 required?: boolean;
                 description?: string;
                 default?: string | number | boolean;
+                mounted?: boolean;
             }>;
             dockerImage?: string;
             transportType?: 'stdio' | 'streamable-http';
             httpPort?: number;
             httpPath?: string;
+            nodePort?: number;
             serviceAccount?: string;
         } | null;
+        deploymentSpecYaml?: string | null;
         userConfig?: {
             [key: string]: {
                 type: 'string' | 'number' | 'boolean' | 'directory' | 'file';
@@ -9203,7 +18292,7 @@ export type CreateInternalMcpCatalogItemResponses = {
             required: boolean;
             description?: string;
         }> | null;
-        serverType: 'local' | 'remote';
+        serverType: 'local' | 'remote' | 'builtin';
         serverUrl: string | null;
         docsUrl: string | null;
         clientSecretId: string | null;
@@ -9219,12 +18308,16 @@ export type CreateInternalMcpCatalogItemResponses = {
                 required?: boolean;
                 description?: string;
                 default?: string | number | boolean;
+                mounted?: boolean;
             }>;
             dockerImage?: string;
+            serviceAccount?: string;
             transportType?: 'stdio' | 'streamable-http';
             httpPort?: number;
             httpPath?: string;
+            nodePort?: number;
         } | null;
+        deploymentSpecYaml: string | null;
         userConfig: {
             [key: string]: {
                 type: 'string' | 'number' | 'boolean' | 'directory' | 'file';
@@ -9435,7 +18528,7 @@ export type GetInternalMcpCatalogItemResponses = {
             required: boolean;
             description?: string;
         }> | null;
-        serverType: 'local' | 'remote';
+        serverType: 'local' | 'remote' | 'builtin';
         serverUrl: string | null;
         docsUrl: string | null;
         clientSecretId: string | null;
@@ -9451,12 +18544,16 @@ export type GetInternalMcpCatalogItemResponses = {
                 required?: boolean;
                 description?: string;
                 default?: string | number | boolean;
+                mounted?: boolean;
             }>;
             dockerImage?: string;
+            serviceAccount?: string;
             transportType?: 'stdio' | 'streamable-http';
             httpPort?: number;
             httpPath?: string;
+            nodePort?: number;
         } | null;
+        deploymentSpecYaml: string | null;
         userConfig: {
             [key: string]: {
                 type: 'string' | 'number' | 'boolean' | 'directory' | 'file';
@@ -9516,7 +18613,7 @@ export type UpdateInternalMcpCatalogItemData = {
             required: boolean;
             description?: string;
         }> | null;
-        serverType?: 'local' | 'remote';
+        serverType?: 'local' | 'remote' | 'builtin';
         serverUrl?: string | null;
         docsUrl?: string | null;
         clientSecretId?: string | null;
@@ -9532,13 +18629,16 @@ export type UpdateInternalMcpCatalogItemData = {
                 required?: boolean;
                 description?: string;
                 default?: string | number | boolean;
+                mounted?: boolean;
             }>;
             dockerImage?: string;
             transportType?: 'stdio' | 'streamable-http';
             httpPort?: number;
             httpPath?: string;
+            nodePort?: number;
             serviceAccount?: string;
         } | null;
+        deploymentSpecYaml?: string | null;
         userConfig?: {
             [key: string]: {
                 type: 'string' | 'number' | 'boolean' | 'directory' | 'file';
@@ -9666,7 +18766,7 @@ export type UpdateInternalMcpCatalogItemResponses = {
             required: boolean;
             description?: string;
         }> | null;
-        serverType: 'local' | 'remote';
+        serverType: 'local' | 'remote' | 'builtin';
         serverUrl: string | null;
         docsUrl: string | null;
         clientSecretId: string | null;
@@ -9682,12 +18782,16 @@ export type UpdateInternalMcpCatalogItemResponses = {
                 required?: boolean;
                 description?: string;
                 default?: string | number | boolean;
+                mounted?: boolean;
             }>;
             dockerImage?: string;
+            serviceAccount?: string;
             transportType?: 'stdio' | 'streamable-http';
             httpPort?: number;
             httpPath?: string;
+            nodePort?: number;
         } | null;
+        deploymentSpecYaml: string | null;
         userConfig: {
             [key: string]: {
                 type: 'string' | 'number' | 'boolean' | 'directory' | 'file';
@@ -9729,6 +18833,96 @@ export type UpdateInternalMcpCatalogItemResponses = {
 };
 
 export type UpdateInternalMcpCatalogItemResponse = UpdateInternalMcpCatalogItemResponses[keyof UpdateInternalMcpCatalogItemResponses];
+
+export type GetInternalMcpCatalogToolsData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/internal_mcp_catalog/{id}/tools';
+};
+
+export type GetInternalMcpCatalogToolsErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type GetInternalMcpCatalogToolsError = GetInternalMcpCatalogToolsErrors[keyof GetInternalMcpCatalogToolsErrors];
+
+export type GetInternalMcpCatalogToolsResponses = {
+    /**
+     * Default Response
+     */
+    200: Array<{
+        id: string;
+        name: string;
+        description: string | null;
+        parameters: {
+            [key: string]: unknown;
+        };
+        createdAt: string;
+        assignedAgentCount: number;
+        assignedAgents: Array<{
+            id: string;
+            name: string;
+        }>;
+    }>;
+};
+
+export type GetInternalMcpCatalogToolsResponse = GetInternalMcpCatalogToolsResponses[keyof GetInternalMcpCatalogToolsResponses];
 
 export type DeleteInternalMcpCatalogItemByNameData = {
     body?: never;
@@ -9809,88 +19003,330 @@ export type DeleteInternalMcpCatalogItemByNameResponses = {
 
 export type DeleteInternalMcpCatalogItemByNameResponse = DeleteInternalMcpCatalogItemByNameResponses[keyof DeleteInternalMcpCatalogItemByNameResponses];
 
-export type GetV1McpData = {
+export type GetDeploymentYamlPreviewData = {
     body?: never;
-    path?: never;
+    path: {
+        id: string;
+    };
     query?: never;
-    url: '/v1/mcp';
+    url: '/api/internal_mcp_catalog/{id}/deployment-yaml-preview';
 };
 
-export type GetV1McpErrors = {
+export type GetDeploymentYamlPreviewErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
     /**
      * Default Response
      */
     401: {
-        error: string;
-        message: string;
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
     };
-};
-
-export type GetV1McpError = GetV1McpErrors[keyof GetV1McpErrors];
-
-export type GetV1McpResponses = {
     /**
      * Default Response
      */
-    200: {
-        name: string;
-        version: string;
-        agentId: string;
-        transport: string;
-        capabilities: {
-            tools: boolean;
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
         };
     };
 };
 
-export type GetV1McpResponse = GetV1McpResponses[keyof GetV1McpResponses];
+export type GetDeploymentYamlPreviewError = GetDeploymentYamlPreviewErrors[keyof GetDeploymentYamlPreviewErrors];
 
-export type PostV1McpData = {
-    body?: {
-        [key: string]: unknown;
-    };
-    path?: never;
-    query?: never;
-    url: '/v1/mcp';
-};
-
-export type PostV1McpResponses = {
-    /**
-     * Default Response
-     */
-    200: unknown;
-};
-
-export type DeleteV1McpSessionsData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/v1/mcp/sessions';
-};
-
-export type DeleteV1McpSessionsErrors = {
-    /**
-     * Default Response
-     */
-    401: {
-        error: string;
-        message: string;
-    };
-};
-
-export type DeleteV1McpSessionsError = DeleteV1McpSessionsErrors[keyof DeleteV1McpSessionsErrors];
-
-export type DeleteV1McpSessionsResponses = {
+export type GetDeploymentYamlPreviewResponses = {
     /**
      * Default Response
      */
     200: {
-        message: string;
-        clearedCount: number;
+        yaml: string;
     };
 };
 
-export type DeleteV1McpSessionsResponse = DeleteV1McpSessionsResponses[keyof DeleteV1McpSessionsResponses];
+export type GetDeploymentYamlPreviewResponse = GetDeploymentYamlPreviewResponses[keyof GetDeploymentYamlPreviewResponses];
+
+export type ValidateDeploymentYamlData = {
+    body: {
+        yaml: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/internal_mcp_catalog/validate-deployment-yaml';
+};
+
+export type ValidateDeploymentYamlErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type ValidateDeploymentYamlError = ValidateDeploymentYamlErrors[keyof ValidateDeploymentYamlErrors];
+
+export type ValidateDeploymentYamlResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        valid: boolean;
+        errors: Array<string>;
+        warnings: Array<string>;
+    };
+};
+
+export type ValidateDeploymentYamlResponse = ValidateDeploymentYamlResponses[keyof ValidateDeploymentYamlResponses];
+
+export type ResetDeploymentYamlData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/internal_mcp_catalog/{id}/reset-deployment-yaml';
+};
+
+export type ResetDeploymentYamlErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type ResetDeploymentYamlError = ResetDeploymentYamlErrors[keyof ResetDeploymentYamlErrors];
+
+export type ResetDeploymentYamlResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        yaml: string;
+    };
+};
+
+export type ResetDeploymentYamlResponse = ResetDeploymentYamlResponses[keyof ResetDeploymentYamlResponses];
+
+export type CheckInvitationData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/invitation/{id}/check';
+};
+
+export type CheckInvitationErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type CheckInvitationError = CheckInvitationErrors[keyof CheckInvitationErrors];
+
+export type CheckInvitationResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        invitation: {
+            id: string;
+            email: string;
+            organizationId: string;
+            status: 'pending' | 'accepted' | 'canceled';
+            expiresAt: string | null;
+        };
+        userExists: boolean;
+    };
+};
+
+export type CheckInvitationResponse = CheckInvitationResponses[keyof CheckInvitationResponses];
 
 export type GetLimitsData = {
     body?: never;
@@ -10351,6 +19787,69 @@ export type UpdateLimitResponses = {
 
 export type UpdateLimitResponse = UpdateLimitResponses[keyof UpdateLimitResponses];
 
+export type GetV1McpByProfileIdData = {
+    body?: never;
+    path: {
+        profileId: string;
+    };
+    query?: never;
+    url: '/v1/mcp/{profileId}';
+};
+
+export type GetV1McpByProfileIdErrors = {
+    /**
+     * Default Response
+     */
+    401: {
+        error: string;
+        message: string;
+    };
+};
+
+export type GetV1McpByProfileIdError = GetV1McpByProfileIdErrors[keyof GetV1McpByProfileIdErrors];
+
+export type GetV1McpByProfileIdResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        name: string;
+        version: string;
+        agentId: string;
+        transport: string;
+        capabilities: {
+            tools: boolean;
+        };
+        tokenAuth?: {
+            tokenId: string;
+            teamId: string | null;
+            isOrganizationToken: boolean;
+            isUserToken?: boolean;
+            userId?: string;
+        };
+    };
+};
+
+export type GetV1McpByProfileIdResponse = GetV1McpByProfileIdResponses[keyof GetV1McpByProfileIdResponses];
+
+export type PostV1McpByProfileIdData = {
+    body?: {
+        [key: string]: unknown;
+    };
+    path: {
+        profileId: string;
+    };
+    query?: never;
+    url: '/v1/mcp/{profileId}';
+};
+
+export type PostV1McpByProfileIdResponses = {
+    /**
+     * Default Response
+     */
+    200: unknown;
+};
+
 export type GetMcpServerInstallationRequestsData = {
     body?: never;
     path?: never;
@@ -10482,11 +19981,13 @@ export type GetMcpServerInstallationRequestsResponses = {
                     required?: boolean;
                     description?: string;
                     default?: string | number | boolean;
+                    mounted?: boolean;
                 }>;
                 dockerImage?: string;
                 transportType?: 'stdio' | 'streamable-http';
                 httpPort?: number;
                 httpPath?: string;
+                nodePort?: number;
                 serviceAccount?: string;
             };
         } | null;
@@ -10561,11 +20062,13 @@ export type CreateMcpServerInstallationRequestData = {
                     required?: boolean;
                     description?: string;
                     default?: string | number | boolean;
+                    mounted?: boolean;
                 }>;
                 dockerImage?: string;
                 transportType?: 'stdio' | 'streamable-http';
                 httpPort?: number;
                 httpPath?: string;
+                nodePort?: number;
                 serviceAccount?: string;
             };
         } | null;
@@ -10694,11 +20197,13 @@ export type CreateMcpServerInstallationRequestResponses = {
                     required?: boolean;
                     description?: string;
                     default?: string | number | boolean;
+                    mounted?: boolean;
                 }>;
                 dockerImage?: string;
                 transportType?: 'stdio' | 'streamable-http';
                 httpPort?: number;
                 httpPath?: string;
+                nodePort?: number;
                 serviceAccount?: string;
             };
         } | null;
@@ -10926,11 +20431,13 @@ export type GetMcpServerInstallationRequestResponses = {
                     required?: boolean;
                     description?: string;
                     default?: string | number | boolean;
+                    mounted?: boolean;
                 }>;
                 dockerImage?: string;
                 transportType?: 'stdio' | 'streamable-http';
                 httpPort?: number;
                 httpPath?: string;
+                nodePort?: number;
                 serviceAccount?: string;
             };
         } | null;
@@ -11005,11 +20512,13 @@ export type UpdateMcpServerInstallationRequestData = {
                     required?: boolean;
                     description?: string;
                     default?: string | number | boolean;
+                    mounted?: boolean;
                 }>;
                 dockerImage?: string;
                 transportType?: 'stdio' | 'streamable-http';
                 httpPort?: number;
                 httpPath?: string;
+                nodePort?: number;
                 serviceAccount?: string;
             };
         } | null;
@@ -11150,11 +20659,13 @@ export type UpdateMcpServerInstallationRequestResponses = {
                     required?: boolean;
                     description?: string;
                     default?: string | number | boolean;
+                    mounted?: boolean;
                 }>;
                 dockerImage?: string;
                 transportType?: 'stdio' | 'streamable-http';
                 httpPort?: number;
                 httpPath?: string;
+                nodePort?: number;
                 serviceAccount?: string;
             };
         } | null;
@@ -11305,11 +20816,13 @@ export type ApproveMcpServerInstallationRequestResponses = {
                     required?: boolean;
                     description?: string;
                     default?: string | number | boolean;
+                    mounted?: boolean;
                 }>;
                 dockerImage?: string;
                 transportType?: 'stdio' | 'streamable-http';
                 httpPort?: number;
                 httpPath?: string;
+                nodePort?: number;
                 serviceAccount?: string;
             };
         } | null;
@@ -11460,11 +20973,13 @@ export type DeclineMcpServerInstallationRequestResponses = {
                     required?: boolean;
                     description?: string;
                     default?: string | number | boolean;
+                    mounted?: boolean;
                 }>;
                 dockerImage?: string;
                 transportType?: 'stdio' | 'streamable-http';
                 httpPort?: number;
                 httpPath?: string;
+                nodePort?: number;
                 serviceAccount?: string;
             };
         } | null;
@@ -11615,11 +21130,13 @@ export type AddMcpServerInstallationRequestNoteResponses = {
                     required?: boolean;
                     description?: string;
                     default?: string | number | boolean;
+                    mounted?: boolean;
                 }>;
                 dockerImage?: string;
                 transportType?: 'stdio' | 'streamable-http';
                 httpPort?: number;
                 httpPath?: string;
+                nodePort?: number;
                 serviceAccount?: string;
             };
         } | null;
@@ -11716,13 +21233,15 @@ export type GetMcpServersResponses = {
         id: string;
         name: string;
         catalogId: string;
-        serverType: 'local' | 'remote';
+        serverType: 'local' | 'remote' | 'builtin';
         secretId: string | null;
         ownerId: string | null;
         teamId: string | null;
         reinstallRequired: boolean;
         localInstallationStatus: 'idle' | 'pending' | 'discovering-tools' | 'success' | 'error';
         localInstallationError: string | null;
+        oauthRefreshError: 'refresh_failed' | 'no_refresh_token';
+        oauthRefreshFailedAt: string | null;
         createdAt: string;
         updatedAt: string;
         ownerEmail?: string | null;
@@ -11754,6 +21273,8 @@ export type InstallMcpServerData = {
         reinstallRequired?: boolean;
         localInstallationStatus?: 'idle' | 'pending' | 'discovering-tools' | 'success' | 'error';
         localInstallationError?: string | null;
+        oauthRefreshError?: 'refresh_failed' | 'no_refresh_token';
+        oauthRefreshFailedAt?: unknown;
         userId?: string;
         userConfigValues?: {
             [key: string]: string;
@@ -11764,6 +21285,7 @@ export type InstallMcpServerData = {
         agentIds?: Array<string>;
         accessToken?: string;
         isByosVault?: boolean;
+        serviceAccount?: string;
     };
     path?: never;
     query?: never;
@@ -11837,13 +21359,15 @@ export type InstallMcpServerResponses = {
         id: string;
         name: string;
         catalogId: string;
-        serverType: 'local' | 'remote';
+        serverType: 'local' | 'remote' | 'builtin';
         secretId: string | null;
         ownerId: string | null;
         teamId: string | null;
         reinstallRequired: boolean;
         localInstallationStatus: 'idle' | 'pending' | 'discovering-tools' | 'success' | 'error';
         localInstallationError: string | null;
+        oauthRefreshError: 'refresh_failed' | 'no_refresh_token';
+        oauthRefreshFailedAt: string | null;
         createdAt: string;
         updatedAt: string;
         ownerEmail?: string | null;
@@ -12020,13 +21544,15 @@ export type GetMcpServerResponses = {
         id: string;
         name: string;
         catalogId: string;
-        serverType: 'local' | 'remote';
+        serverType: 'local' | 'remote' | 'builtin';
         secretId: string | null;
         ownerId: string | null;
         teamId: string | null;
         reinstallRequired: boolean;
         localInstallationStatus: 'idle' | 'pending' | 'discovering-tools' | 'success' | 'error';
         localInstallationError: string | null;
+        oauthRefreshError: 'refresh_failed' | 'no_refresh_token';
+        oauthRefreshFailedAt: string | null;
         createdAt: string;
         updatedAt: string;
         ownerEmail?: string | null;
@@ -12047,6 +21573,114 @@ export type GetMcpServerResponses = {
 };
 
 export type GetMcpServerResponse = GetMcpServerResponses[keyof GetMcpServerResponses];
+
+export type ReauthenticateMcpServerData = {
+    body: {
+        secretId: string;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/mcp_server/{id}/reauthenticate';
+};
+
+export type ReauthenticateMcpServerErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type ReauthenticateMcpServerError = ReauthenticateMcpServerErrors[keyof ReauthenticateMcpServerErrors];
+
+export type ReauthenticateMcpServerResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        id: string;
+        name: string;
+        catalogId: string;
+        serverType: 'local' | 'remote' | 'builtin';
+        secretId: string | null;
+        ownerId: string | null;
+        teamId: string | null;
+        reinstallRequired: boolean;
+        localInstallationStatus: 'idle' | 'pending' | 'discovering-tools' | 'success' | 'error';
+        localInstallationError: string | null;
+        oauthRefreshError: 'refresh_failed' | 'no_refresh_token';
+        oauthRefreshFailedAt: string | null;
+        createdAt: string;
+        updatedAt: string;
+        ownerEmail?: string | null;
+        catalogName?: string | null;
+        users?: Array<string>;
+        userDetails?: Array<{
+            userId: string;
+            email: string;
+            createdAt: string;
+        }>;
+        teamDetails?: {
+            teamId: string;
+            name: string;
+            createdAt: string;
+        } | null;
+        secretStorageType?: 'vault' | 'external_vault' | 'database' | 'none';
+    };
+};
+
+export type ReauthenticateMcpServerResponse = ReauthenticateMcpServerResponses[keyof ReauthenticateMcpServerResponses];
 
 export type GetMcpServerInstallationStatusData = {
     body?: never;
@@ -12218,101 +21852,22 @@ export type GetMcpServerToolsResponses = {
 
 export type GetMcpServerToolsResponse = GetMcpServerToolsResponses[keyof GetMcpServerToolsResponses];
 
-export type GetMcpServerLogsData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: {
-        lines?: number;
-        follow?: boolean;
-    };
-    url: '/api/mcp_server/{id}/logs';
-};
-
-export type GetMcpServerLogsErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        error: {
-            message: string;
-            type: 'api_validation_error';
+export type ReinstallMcpServerData = {
+    body?: {
+        environmentValues?: {
+            [key: string]: string;
         };
+        isByosVault?: boolean;
+        serviceAccount?: string;
     };
-    /**
-     * Default Response
-     */
-    401: {
-        error: {
-            message: string;
-            type: 'api_authentication_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    403: {
-        error: {
-            message: string;
-            type: 'api_authorization_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        error: {
-            message: string;
-            type: 'api_not_found_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    409: {
-        error: {
-            message: string;
-            type: 'api_conflict_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    500: {
-        error: {
-            message: string;
-            type: 'api_internal_server_error';
-        };
-    };
-};
-
-export type GetMcpServerLogsError = GetMcpServerLogsErrors[keyof GetMcpServerLogsErrors];
-
-export type GetMcpServerLogsResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        logs: string;
-        containerName: string;
-        command: string;
-        namespace: string;
-    };
-};
-
-export type GetMcpServerLogsResponse = GetMcpServerLogsResponses[keyof GetMcpServerLogsResponses];
-
-export type RestartMcpServerData = {
-    body?: never;
     path: {
         id: string;
     };
     query?: never;
-    url: '/api/mcp_server/{id}/restart';
+    url: '/api/mcp_server/{id}/reinstall';
 };
 
-export type RestartMcpServerErrors = {
+export type ReinstallMcpServerErrors = {
     /**
      * Default Response
      */
@@ -12369,110 +21924,45 @@ export type RestartMcpServerErrors = {
     };
 };
 
-export type RestartMcpServerError = RestartMcpServerErrors[keyof RestartMcpServerErrors];
+export type ReinstallMcpServerError = ReinstallMcpServerErrors[keyof ReinstallMcpServerErrors];
 
-export type RestartMcpServerResponses = {
+export type ReinstallMcpServerResponses = {
     /**
      * Default Response
      */
     200: {
-        success: boolean;
-        message: string;
-    };
-};
-
-export type RestartMcpServerResponse = RestartMcpServerResponses[keyof RestartMcpServerResponses];
-
-export type RestartAllMcpServerInstallationsData = {
-    body?: never;
-    path: {
+        id: string;
+        name: string;
         catalogId: string;
-    };
-    query?: never;
-    url: '/api/mcp_catalog/{catalogId}/restart-all-installations';
-};
-
-export type RestartAllMcpServerInstallationsErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        error: {
-            message: string;
-            type: 'api_validation_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    401: {
-        error: {
-            message: string;
-            type: 'api_authentication_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    403: {
-        error: {
-            message: string;
-            type: 'api_authorization_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        error: {
-            message: string;
-            type: 'api_not_found_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    409: {
-        error: {
-            message: string;
-            type: 'api_conflict_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    500: {
-        error: {
-            message: string;
-            type: 'api_internal_server_error';
-        };
-    };
-};
-
-export type RestartAllMcpServerInstallationsError = RestartAllMcpServerInstallationsErrors[keyof RestartAllMcpServerInstallationsErrors];
-
-export type RestartAllMcpServerInstallationsResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        success: boolean;
-        message: string;
-        results: Array<{
-            serverId: string;
-            serverName: string;
-            success: boolean;
-            error?: string;
+        serverType: 'local' | 'remote' | 'builtin';
+        secretId: string | null;
+        ownerId: string | null;
+        teamId: string | null;
+        reinstallRequired: boolean;
+        localInstallationStatus: 'idle' | 'pending' | 'discovering-tools' | 'success' | 'error';
+        localInstallationError: string | null;
+        oauthRefreshError: 'refresh_failed' | 'no_refresh_token';
+        oauthRefreshFailedAt: string | null;
+        createdAt: string;
+        updatedAt: string;
+        ownerEmail?: string | null;
+        catalogName?: string | null;
+        users?: Array<string>;
+        userDetails?: Array<{
+            userId: string;
+            email: string;
+            createdAt: string;
         }>;
-        summary: {
-            total: number;
-            succeeded: number;
-            failed: number;
-        };
+        teamDetails?: {
+            teamId: string;
+            name: string;
+            createdAt: string;
+        } | null;
+        secretStorageType?: 'vault' | 'external_vault' | 'database' | 'none';
     };
 };
 
-export type RestartAllMcpServerInstallationsResponse = RestartAllMcpServerInstallationsResponses[keyof RestartAllMcpServerInstallationsResponses];
+export type ReinstallMcpServerResponse = ReinstallMcpServerResponses[keyof ReinstallMcpServerResponses];
 
 export type GetMcpToolCallsData = {
     body?: never;
@@ -12482,6 +21972,18 @@ export type GetMcpToolCallsData = {
          * Filter by agent ID
          */
         agentId?: string;
+        /**
+         * Filter by start date (ISO 8601 format)
+         */
+        startDate?: string;
+        /**
+         * Filter by end date (ISO 8601 format)
+         */
+        endDate?: string;
+        /**
+         * Free-text search across MCP server name, tool name, and arguments (case-insensitive)
+         */
+        search?: string;
         limit?: number;
         offset?: number;
         sortBy?: 'createdAt' | 'agentId' | 'mcpServerName' | 'method';
@@ -12570,7 +22072,10 @@ export type GetMcpToolCallsResponses = {
                 };
             } | null;
             toolResult: unknown;
+            userId: string | null;
+            authMethod: 'oauth' | 'user_token' | 'org_token' | 'team_token' | 'external_idp';
             createdAt: string;
+            userName: string | null;
         }>;
         pagination: {
             currentPage: number;
@@ -12673,107 +22178,186 @@ export type GetMcpToolCallResponses = {
             };
         } | null;
         toolResult: unknown;
+        userId: string | null;
+        authMethod: 'oauth' | 'user_token' | 'org_token' | 'team_token' | 'external_idp';
         createdAt: string;
+        userName: string | null;
     };
 };
 
 export type GetMcpToolCallResponse = GetMcpToolCallResponses[keyof GetMcpToolCallResponses];
 
-export type GetV1McpByProfileIdData = {
-    body?: never;
-    path: {
-        profileId: string;
+export type MistralChatCompletionsWithDefaultAgentData = {
+    body?: MistralChatCompletionRequestInput;
+    headers: {
+        /**
+         * The user agent of the client
+         */
+        'user-agent'?: string;
+        /**
+         * Bearer token for OpenAI
+         */
+        authorization: string;
     };
+    path?: never;
     query?: never;
-    url: '/v1/mcp/{profileId}';
+    url: '/v1/mistral/chat/completions';
 };
 
-export type GetV1McpByProfileIdErrors = {
+export type MistralChatCompletionsWithDefaultAgentErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
     /**
      * Default Response
      */
     401: {
-        error: string;
-        message: string;
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
     };
-};
-
-export type GetV1McpByProfileIdError = GetV1McpByProfileIdErrors[keyof GetV1McpByProfileIdErrors];
-
-export type GetV1McpByProfileIdResponses = {
     /**
      * Default Response
      */
-    200: {
-        name: string;
-        version: string;
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type MistralChatCompletionsWithDefaultAgentError = MistralChatCompletionsWithDefaultAgentErrors[keyof MistralChatCompletionsWithDefaultAgentErrors];
+
+export type MistralChatCompletionsWithDefaultAgentResponses = {
+    /**
+     * Default Response
+     */
+    200: MistralChatCompletionResponse;
+};
+
+export type MistralChatCompletionsWithDefaultAgentResponse = MistralChatCompletionsWithDefaultAgentResponses[keyof MistralChatCompletionsWithDefaultAgentResponses];
+
+export type MistralChatCompletionsWithAgentData = {
+    body?: MistralChatCompletionRequestInput;
+    headers: {
+        /**
+         * The user agent of the client
+         */
+        'user-agent'?: string;
+        /**
+         * Bearer token for OpenAI
+         */
+        authorization: string;
+    };
+    path: {
         agentId: string;
-        transport: string;
-        capabilities: {
-            tools: boolean;
-        };
-        tokenAuth?: {
-            tokenId: string;
-            teamId: string | null;
-            isOrganizationToken: boolean;
-            isUserToken?: boolean;
-            userId?: string;
-        };
-    };
-};
-
-export type GetV1McpByProfileIdResponse = GetV1McpByProfileIdResponses[keyof GetV1McpByProfileIdResponses];
-
-export type PostV1McpByProfileIdData = {
-    body?: {
-        [key: string]: unknown;
-    };
-    path: {
-        profileId: string;
     };
     query?: never;
-    url: '/v1/mcp/{profileId}';
+    url: '/v1/mistral/{agentId}/chat/completions';
 };
 
-export type PostV1McpByProfileIdResponses = {
+export type MistralChatCompletionsWithAgentErrors = {
     /**
      * Default Response
      */
-    200: unknown;
-};
-
-export type DeleteV1McpSessionsByProfileIdData = {
-    body?: never;
-    path: {
-        profileId: string;
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
     };
-    query?: never;
-    url: '/v1/mcp/sessions/{profileId}';
-};
-
-export type DeleteV1McpSessionsByProfileIdErrors = {
     /**
      * Default Response
      */
     401: {
-        error: string;
-        message: string;
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
     };
-};
-
-export type DeleteV1McpSessionsByProfileIdError = DeleteV1McpSessionsByProfileIdErrors[keyof DeleteV1McpSessionsByProfileIdErrors];
-
-export type DeleteV1McpSessionsByProfileIdResponses = {
     /**
      * Default Response
      */
-    200: {
-        message: string;
-        clearedCount: number;
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
     };
 };
 
-export type DeleteV1McpSessionsByProfileIdResponse = DeleteV1McpSessionsByProfileIdResponses[keyof DeleteV1McpSessionsByProfileIdResponses];
+export type MistralChatCompletionsWithAgentError = MistralChatCompletionsWithAgentErrors[keyof MistralChatCompletionsWithAgentErrors];
+
+export type MistralChatCompletionsWithAgentResponses = {
+    /**
+     * Default Response
+     */
+    200: MistralChatCompletionResponse;
+};
+
+export type MistralChatCompletionsWithAgentResponse = MistralChatCompletionsWithAgentResponses[keyof MistralChatCompletionsWithAgentResponses];
 
 export type InitiateOAuthData = {
     body: {
@@ -12942,8 +22526,231 @@ export type HandleOAuthCallbackResponses = {
 
 export type HandleOAuthCallbackResponse = HandleOAuthCallbackResponses[keyof HandleOAuthCallbackResponses];
 
+export type GetWellKnownOauthProtectedResourceBy__Data = {
+    body?: never;
+    path: {
+        '*': string;
+    };
+    query?: never;
+    url: '/.well-known/oauth-protected-resource/{*}';
+};
+
+export type GetWellKnownOauthProtectedResourceBy__Responses = {
+    /**
+     * Default Response
+     */
+    200: {
+        resource: string;
+        authorization_servers: Array<string>;
+        scopes_supported: Array<string>;
+        bearer_methods_supported: Array<string>;
+    };
+};
+
+export type GetWellKnownOauthProtectedResourceBy__Response = GetWellKnownOauthProtectedResourceBy__Responses[keyof GetWellKnownOauthProtectedResourceBy__Responses];
+
+export type GetWellKnownOauthAuthorizationServerData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/.well-known/oauth-authorization-server';
+};
+
+export type GetWellKnownOauthAuthorizationServerResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        issuer: string;
+        authorization_endpoint: string;
+        token_endpoint: string;
+        registration_endpoint: string;
+        jwks_uri: string;
+        response_types_supported: Array<string>;
+        grant_types_supported: Array<string>;
+        token_endpoint_auth_methods_supported: Array<string>;
+        code_challenge_methods_supported: Array<string>;
+        scopes_supported: Array<string>;
+        client_id_metadata_document_supported: boolean;
+    };
+};
+
+export type GetWellKnownOauthAuthorizationServerResponse = GetWellKnownOauthAuthorizationServerResponses[keyof GetWellKnownOauthAuthorizationServerResponses];
+
+export type OllamaChatCompletionsWithDefaultAgentData = {
+    body?: OllamaChatCompletionRequestInput;
+    headers?: {
+        /**
+         * The user agent of the client
+         */
+        'user-agent'?: string;
+        /**
+         * Bearer token for Ollama (typically not required)
+         */
+        authorization?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/v1/ollama/chat/completions';
+};
+
+export type OllamaChatCompletionsWithDefaultAgentErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type OllamaChatCompletionsWithDefaultAgentError = OllamaChatCompletionsWithDefaultAgentErrors[keyof OllamaChatCompletionsWithDefaultAgentErrors];
+
+export type OllamaChatCompletionsWithDefaultAgentResponses = {
+    /**
+     * Default Response
+     */
+    200: OllamaChatCompletionResponse;
+};
+
+export type OllamaChatCompletionsWithDefaultAgentResponse = OllamaChatCompletionsWithDefaultAgentResponses[keyof OllamaChatCompletionsWithDefaultAgentResponses];
+
+export type OllamaChatCompletionsWithAgentData = {
+    body?: OllamaChatCompletionRequestInput;
+    headers?: {
+        /**
+         * The user agent of the client
+         */
+        'user-agent'?: string;
+        /**
+         * Bearer token for Ollama (typically not required)
+         */
+        authorization?: string;
+    };
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/v1/ollama/{agentId}/chat/completions';
+};
+
+export type OllamaChatCompletionsWithAgentErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type OllamaChatCompletionsWithAgentError = OllamaChatCompletionsWithAgentErrors[keyof OllamaChatCompletionsWithAgentErrors];
+
+export type OllamaChatCompletionsWithAgentResponses = {
+    /**
+     * Default Response
+     */
+    200: OllamaChatCompletionResponse;
+};
+
+export type OllamaChatCompletionsWithAgentResponse = OllamaChatCompletionsWithAgentResponses[keyof OllamaChatCompletionsWithAgentResponses];
+
 export type OpenAiChatCompletionsWithDefaultAgentData = {
-    body?: OpenAiChatCompletionRequestInput;
+    body?: MistralChatCompletionRequestInput;
     headers: {
         /**
          * The user agent of the client
@@ -13028,7 +22835,7 @@ export type OpenAiChatCompletionsWithDefaultAgentResponses = {
 export type OpenAiChatCompletionsWithDefaultAgentResponse = OpenAiChatCompletionsWithDefaultAgentResponses[keyof OpenAiChatCompletionsWithDefaultAgentResponses];
 
 export type OpenAiChatCompletionsWithAgentData = {
-    body?: OpenAiChatCompletionRequestInput;
+    body?: MistralChatCompletionRequestInput;
     headers: {
         /**
          * The user agent of the client
@@ -13193,7 +23000,7 @@ export type GetOptimizationRulesResponses = {
         } | {
             hasTools: boolean;
         }>;
-        provider: 'openai' | 'gemini' | 'anthropic';
+        provider: 'openai' | 'gemini' | 'anthropic' | 'bedrock' | 'cohere' | 'cerebras' | 'mistral' | 'vllm' | 'ollama' | 'zhipuai';
         targetModel: string;
         enabled: boolean;
         createdAt: string;
@@ -13213,7 +23020,7 @@ export type CreateOptimizationRuleData = {
         } | {
             hasTools: boolean;
         }>;
-        provider: 'openai' | 'gemini' | 'anthropic';
+        provider: 'openai' | 'gemini' | 'anthropic' | 'bedrock' | 'cohere' | 'cerebras' | 'mistral' | 'vllm' | 'ollama' | 'zhipuai';
         targetModel: string;
         enabled?: boolean;
         createdAt?: unknown;
@@ -13296,7 +23103,7 @@ export type CreateOptimizationRuleResponses = {
         } | {
             hasTools: boolean;
         }>;
-        provider: 'openai' | 'gemini' | 'anthropic';
+        provider: 'openai' | 'gemini' | 'anthropic' | 'bedrock' | 'cohere' | 'cerebras' | 'mistral' | 'vllm' | 'ollama' | 'zhipuai';
         targetModel: string;
         enabled: boolean;
         createdAt: string;
@@ -13395,7 +23202,7 @@ export type UpdateOptimizationRuleData = {
         } | {
             hasTools: boolean;
         }>;
-        provider?: 'openai' | 'gemini' | 'anthropic';
+        provider?: 'openai' | 'gemini' | 'anthropic' | 'bedrock' | 'cohere' | 'cerebras' | 'mistral' | 'vllm' | 'ollama' | 'zhipuai';
         targetModel?: string;
         enabled?: boolean;
         createdAt?: unknown;
@@ -13480,7 +23287,7 @@ export type UpdateOptimizationRuleResponses = {
         } | {
             hasTools: boolean;
         }>;
-        provider: 'openai' | 'gemini' | 'anthropic';
+        provider: 'openai' | 'gemini' | 'anthropic' | 'bedrock' | 'cohere' | 'cerebras' | 'mistral' | 'vllm' | 'ollama' | 'zhipuai';
         targetModel: string;
         enabled: boolean;
         createdAt: string;
@@ -13489,6 +23296,452 @@ export type UpdateOptimizationRuleResponses = {
 };
 
 export type UpdateOptimizationRuleResponse = UpdateOptimizationRuleResponses[keyof UpdateOptimizationRuleResponses];
+
+export type GetRolesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/roles';
+};
+
+export type GetRolesErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type GetRolesError = GetRolesErrors[keyof GetRolesErrors];
+
+export type GetRolesResponses = {
+    /**
+     * Default Response
+     */
+    200: Array<{
+        id: string;
+        organizationId?: string;
+        role: string;
+        name: string;
+        permission: {
+            [key: string]: Array<'create' | 'read' | 'update' | 'delete' | 'admin' | 'cancel'>;
+        };
+        createdAt: string;
+        updatedAt: string | null;
+        predefined: boolean;
+    }>;
+};
+
+export type GetRolesResponse = GetRolesResponses[keyof GetRolesResponses];
+
+export type CreateRoleData = {
+    body: {
+        name: string;
+        permission: {
+            [key: string]: Array<'create' | 'read' | 'update' | 'delete' | 'admin' | 'cancel'>;
+        };
+    };
+    path?: never;
+    query?: never;
+    url: '/api/roles';
+};
+
+export type CreateRoleErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type CreateRoleError = CreateRoleErrors[keyof CreateRoleErrors];
+
+export type CreateRoleResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        id: string;
+        organizationId?: string;
+        role: string;
+        name: string;
+        permission: {
+            [key: string]: Array<'create' | 'read' | 'update' | 'delete' | 'admin' | 'cancel'>;
+        };
+        createdAt: string;
+        updatedAt: string | null;
+        predefined: boolean;
+    };
+};
+
+export type CreateRoleResponse = CreateRoleResponses[keyof CreateRoleResponses];
+
+export type DeleteRoleData = {
+    body?: never;
+    path: {
+        /**
+         * Custom role ID (base62)
+         */
+        roleId: string;
+    };
+    query?: never;
+    url: '/api/roles/{roleId}';
+};
+
+export type DeleteRoleErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type DeleteRoleError = DeleteRoleErrors[keyof DeleteRoleErrors];
+
+export type DeleteRoleResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        success: boolean;
+    };
+};
+
+export type DeleteRoleResponse = DeleteRoleResponses[keyof DeleteRoleResponses];
+
+export type GetRoleData = {
+    body?: never;
+    path: {
+        /**
+         * Predefined role name or custom role ID
+         */
+        roleId: 'admin' | 'editor' | 'member' | string;
+    };
+    query?: never;
+    url: '/api/roles/{roleId}';
+};
+
+export type GetRoleErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type GetRoleError = GetRoleErrors[keyof GetRoleErrors];
+
+export type GetRoleResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        id: string;
+        organizationId?: string;
+        role: string;
+        name: string;
+        permission: {
+            [key: string]: Array<'create' | 'read' | 'update' | 'delete' | 'admin' | 'cancel'>;
+        };
+        createdAt: string;
+        updatedAt: string | null;
+        predefined: boolean;
+    };
+};
+
+export type GetRoleResponse = GetRoleResponses[keyof GetRoleResponses];
+
+export type UpdateRoleData = {
+    body?: {
+        name?: string;
+        permission?: {
+            [key: string]: Array<'create' | 'read' | 'update' | 'delete' | 'admin' | 'cancel'>;
+        };
+    };
+    path: {
+        /**
+         * Predefined role name or custom role ID
+         */
+        roleId: 'admin' | 'editor' | 'member' | string;
+    };
+    query?: never;
+    url: '/api/roles/{roleId}';
+};
+
+export type UpdateRoleErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type UpdateRoleError = UpdateRoleErrors[keyof UpdateRoleErrors];
+
+export type UpdateRoleResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        id: string;
+        organizationId?: string;
+        role: string;
+        name: string;
+        permission: {
+            [key: string]: Array<'create' | 'read' | 'update' | 'delete' | 'admin' | 'cancel'>;
+        };
+        createdAt: string;
+        updatedAt: string | null;
+        predefined: boolean;
+    };
+};
+
+export type UpdateRoleResponse = UpdateRoleResponses[keyof UpdateRoleResponses];
 
 export type GetOrganizationData = {
     body?: never;
@@ -13569,11 +23822,13 @@ export type GetOrganizationResponses = {
         metadata: string | null;
         limitCleanupInterval: '1h' | '12h' | '24h' | '1w' | '1m';
         onboardingComplete: boolean;
-        theme: 'modern-minimal' | 'graphite' | 'clean-slate' | 'mono' | 'elegant-luxury' | 'claymorphism' | 't3-chat' | 'twitter' | 'bubblegum' | 'tangerine' | 'quantum-rose' | 'candyland' | 'pastel-dreams' | 'retro-arcade' | 'caffeine' | 'amber-minimal' | 'cosmic-night' | 'doom-64' | 'catppuccin' | 'perpetuity' | 'midnight-bloom' | 'starry-night' | 'cyberpunk' | 'mocha-mousse' | 'kodama-grove' | 'nature' | 'ocean-breeze' | 'sunset-horizon' | 'solar-dusk' | 'bold-tech' | 'neo-brutalism' | 'supabase' | 'vercel' | 'claude' | 'northern-lights' | 'vintage-paper';
-        customFont: 'lato' | 'inter' | 'open-sans' | 'roboto' | 'source-sans-pro';
+        theme: 'modern-minimal' | 'clean-slate' | 'mono' | 'twitter' | 'tangerine' | 'bubblegum' | 'caffeine' | 'amber-minimal' | 'cosmic-night' | 'doom-64' | 'mocha-mousse' | 'nature' | 'sunset-horizon' | 'neo-brutalism' | 'vercel' | 'claude' | 'vintage-paper' | 'boxy-minimalistic' | 'catppuccin' | 'solarized-dark' | 'gruvbox-dark' | 'dracula-dark' | 'monokai-dark' | 'moonlight-dark';
+        customFont: 'lato' | 'inter' | 'open-sans' | 'roboto' | 'source-sans-pro' | 'jetbrains-mono';
         convertToolResultsToToon: boolean;
         compressionScope: 'organization' | 'team';
         autoConfigureNewTools: boolean;
+        globalToolPolicy: 'permissive' | 'restrictive';
+        allowChatFileUploads: boolean;
     };
 };
 
@@ -13581,14 +23836,16 @@ export type GetOrganizationResponse = GetOrganizationResponses[keyof GetOrganiza
 
 export type UpdateOrganizationData = {
     body?: {
-        theme?: 'modern-minimal' | 'graphite' | 'clean-slate' | 'mono' | 'elegant-luxury' | 'claymorphism' | 't3-chat' | 'twitter' | 'bubblegum' | 'tangerine' | 'quantum-rose' | 'candyland' | 'pastel-dreams' | 'retro-arcade' | 'caffeine' | 'amber-minimal' | 'cosmic-night' | 'doom-64' | 'catppuccin' | 'perpetuity' | 'midnight-bloom' | 'starry-night' | 'cyberpunk' | 'mocha-mousse' | 'kodama-grove' | 'nature' | 'ocean-breeze' | 'sunset-horizon' | 'solar-dusk' | 'bold-tech' | 'neo-brutalism' | 'supabase' | 'vercel' | 'claude' | 'northern-lights' | 'vintage-paper';
-        customFont?: 'lato' | 'inter' | 'open-sans' | 'roboto' | 'source-sans-pro';
+        theme?: 'modern-minimal' | 'clean-slate' | 'mono' | 'twitter' | 'tangerine' | 'bubblegum' | 'caffeine' | 'amber-minimal' | 'cosmic-night' | 'doom-64' | 'mocha-mousse' | 'nature' | 'sunset-horizon' | 'neo-brutalism' | 'vercel' | 'claude' | 'vintage-paper' | 'boxy-minimalistic' | 'catppuccin' | 'solarized-dark' | 'gruvbox-dark' | 'dracula-dark' | 'monokai-dark' | 'moonlight-dark';
+        customFont?: 'lato' | 'inter' | 'open-sans' | 'roboto' | 'source-sans-pro' | 'jetbrains-mono';
         limitCleanupInterval?: '1h' | '12h' | '24h' | '1w' | '1m';
         compressionScope?: 'organization' | 'team';
+        globalToolPolicy?: 'permissive' | 'restrictive';
         logo?: string | null;
         onboardingComplete?: boolean;
         convertToolResultsToToon?: boolean;
         autoConfigureNewTools?: boolean;
+        allowChatFileUploads?: boolean;
     };
     path?: never;
     query?: never;
@@ -13667,11 +23924,13 @@ export type UpdateOrganizationResponses = {
         metadata: string | null;
         limitCleanupInterval: '1h' | '12h' | '24h' | '1w' | '1m';
         onboardingComplete: boolean;
-        theme: 'modern-minimal' | 'graphite' | 'clean-slate' | 'mono' | 'elegant-luxury' | 'claymorphism' | 't3-chat' | 'twitter' | 'bubblegum' | 'tangerine' | 'quantum-rose' | 'candyland' | 'pastel-dreams' | 'retro-arcade' | 'caffeine' | 'amber-minimal' | 'cosmic-night' | 'doom-64' | 'catppuccin' | 'perpetuity' | 'midnight-bloom' | 'starry-night' | 'cyberpunk' | 'mocha-mousse' | 'kodama-grove' | 'nature' | 'ocean-breeze' | 'sunset-horizon' | 'solar-dusk' | 'bold-tech' | 'neo-brutalism' | 'supabase' | 'vercel' | 'claude' | 'northern-lights' | 'vintage-paper';
-        customFont: 'lato' | 'inter' | 'open-sans' | 'roboto' | 'source-sans-pro';
+        theme: 'modern-minimal' | 'clean-slate' | 'mono' | 'twitter' | 'tangerine' | 'bubblegum' | 'caffeine' | 'amber-minimal' | 'cosmic-night' | 'doom-64' | 'mocha-mousse' | 'nature' | 'sunset-horizon' | 'neo-brutalism' | 'vercel' | 'claude' | 'vintage-paper' | 'boxy-minimalistic' | 'catppuccin' | 'solarized-dark' | 'gruvbox-dark' | 'dracula-dark' | 'monokai-dark' | 'moonlight-dark';
+        customFont: 'lato' | 'inter' | 'open-sans' | 'roboto' | 'source-sans-pro' | 'jetbrains-mono';
         convertToolResultsToToon: boolean;
         compressionScope: 'organization' | 'team';
         autoConfigureNewTools: boolean;
+        globalToolPolicy: 'permissive' | 'restrictive';
+        allowChatFileUploads: boolean;
     };
 };
 
@@ -13755,6 +24014,85 @@ export type GetOnboardingStatusResponses = {
 
 export type GetOnboardingStatusResponse = GetOnboardingStatusResponses[keyof GetOnboardingStatusResponses];
 
+export type GetPublicAppearanceData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/organization/appearance';
+};
+
+export type GetPublicAppearanceErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type GetPublicAppearanceError = GetPublicAppearanceErrors[keyof GetPublicAppearanceErrors];
+
+export type GetPublicAppearanceResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        theme: 'modern-minimal' | 'clean-slate' | 'mono' | 'twitter' | 'tangerine' | 'bubblegum' | 'caffeine' | 'amber-minimal' | 'cosmic-night' | 'doom-64' | 'mocha-mousse' | 'nature' | 'sunset-horizon' | 'neo-brutalism' | 'vercel' | 'claude' | 'vintage-paper' | 'boxy-minimalistic' | 'catppuccin' | 'solarized-dark' | 'gruvbox-dark' | 'dracula-dark' | 'monokai-dark' | 'moonlight-dark';
+        customFont: 'lato' | 'inter' | 'open-sans' | 'roboto' | 'source-sans-pro' | 'jetbrains-mono';
+        logo: string | null;
+    };
+};
+
+export type GetPublicAppearanceResponse = GetPublicAppearanceResponses[keyof GetPublicAppearanceResponses];
+
 export type GetPolicyConfigSubagentPromptData = {
     body?: never;
     path?: never;
@@ -13831,630 +24169,6 @@ export type GetPolicyConfigSubagentPromptResponses = {
 };
 
 export type GetPolicyConfigSubagentPromptResponse = GetPolicyConfigSubagentPromptResponses[keyof GetPolicyConfigSubagentPromptResponses];
-
-export type GetPromptsData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/prompts';
-};
-
-export type GetPromptsErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        error: {
-            message: string;
-            type: 'api_validation_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    401: {
-        error: {
-            message: string;
-            type: 'api_authentication_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    403: {
-        error: {
-            message: string;
-            type: 'api_authorization_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        error: {
-            message: string;
-            type: 'api_not_found_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    409: {
-        error: {
-            message: string;
-            type: 'api_conflict_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    500: {
-        error: {
-            message: string;
-            type: 'api_internal_server_error';
-        };
-    };
-};
-
-export type GetPromptsError = GetPromptsErrors[keyof GetPromptsErrors];
-
-export type GetPromptsResponses = {
-    /**
-     * Default Response
-     */
-    200: Array<{
-        id: string;
-        organizationId: string;
-        name: string;
-        agentId: string;
-        userPrompt: string | null;
-        systemPrompt: string | null;
-        version: number;
-        parentPromptId: string | null;
-        isActive: boolean;
-        createdAt: string;
-        updatedAt: string;
-    }>;
-};
-
-export type GetPromptsResponse = GetPromptsResponses[keyof GetPromptsResponses];
-
-export type CreatePromptData = {
-    body: {
-        name: string;
-        agentId: string;
-        userPrompt?: string | null;
-        systemPrompt?: string | null;
-        version?: number;
-        parentPromptId?: string | null;
-        isActive?: boolean;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/prompts';
-};
-
-export type CreatePromptErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        error: {
-            message: string;
-            type: 'api_validation_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    401: {
-        error: {
-            message: string;
-            type: 'api_authentication_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    403: {
-        error: {
-            message: string;
-            type: 'api_authorization_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        error: {
-            message: string;
-            type: 'api_not_found_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    409: {
-        error: {
-            message: string;
-            type: 'api_conflict_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    500: {
-        error: {
-            message: string;
-            type: 'api_internal_server_error';
-        };
-    };
-};
-
-export type CreatePromptError = CreatePromptErrors[keyof CreatePromptErrors];
-
-export type CreatePromptResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        organizationId: string;
-        name: string;
-        agentId: string;
-        userPrompt: string | null;
-        systemPrompt: string | null;
-        version: number;
-        parentPromptId: string | null;
-        isActive: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-
-export type CreatePromptResponse = CreatePromptResponses[keyof CreatePromptResponses];
-
-export type DeletePromptData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/prompts/{id}';
-};
-
-export type DeletePromptErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        error: {
-            message: string;
-            type: 'api_validation_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    401: {
-        error: {
-            message: string;
-            type: 'api_authentication_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    403: {
-        error: {
-            message: string;
-            type: 'api_authorization_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        error: {
-            message: string;
-            type: 'api_not_found_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    409: {
-        error: {
-            message: string;
-            type: 'api_conflict_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    500: {
-        error: {
-            message: string;
-            type: 'api_internal_server_error';
-        };
-    };
-};
-
-export type DeletePromptError = DeletePromptErrors[keyof DeletePromptErrors];
-
-export type DeletePromptResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        success: boolean;
-    };
-};
-
-export type DeletePromptResponse = DeletePromptResponses[keyof DeletePromptResponses];
-
-export type GetPromptData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/prompts/{id}';
-};
-
-export type GetPromptErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        error: {
-            message: string;
-            type: 'api_validation_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    401: {
-        error: {
-            message: string;
-            type: 'api_authentication_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    403: {
-        error: {
-            message: string;
-            type: 'api_authorization_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        error: {
-            message: string;
-            type: 'api_not_found_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    409: {
-        error: {
-            message: string;
-            type: 'api_conflict_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    500: {
-        error: {
-            message: string;
-            type: 'api_internal_server_error';
-        };
-    };
-};
-
-export type GetPromptError = GetPromptErrors[keyof GetPromptErrors];
-
-export type GetPromptResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        organizationId: string;
-        name: string;
-        agentId: string;
-        userPrompt: string | null;
-        systemPrompt: string | null;
-        version: number;
-        parentPromptId: string | null;
-        isActive: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-
-export type GetPromptResponse = GetPromptResponses[keyof GetPromptResponses];
-
-export type UpdatePromptData = {
-    body?: {
-        name?: string;
-        agentId?: string;
-        userPrompt?: string | null;
-        systemPrompt?: string | null;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/prompts/{id}';
-};
-
-export type UpdatePromptErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        error: {
-            message: string;
-            type: 'api_validation_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    401: {
-        error: {
-            message: string;
-            type: 'api_authentication_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    403: {
-        error: {
-            message: string;
-            type: 'api_authorization_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        error: {
-            message: string;
-            type: 'api_not_found_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    409: {
-        error: {
-            message: string;
-            type: 'api_conflict_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    500: {
-        error: {
-            message: string;
-            type: 'api_internal_server_error';
-        };
-    };
-};
-
-export type UpdatePromptError = UpdatePromptErrors[keyof UpdatePromptErrors];
-
-export type UpdatePromptResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        organizationId: string;
-        name: string;
-        agentId: string;
-        userPrompt: string | null;
-        systemPrompt: string | null;
-        version: number;
-        parentPromptId: string | null;
-        isActive: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-
-export type UpdatePromptResponse = UpdatePromptResponses[keyof UpdatePromptResponses];
-
-export type GetPromptVersionsData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/prompts/{id}/versions';
-};
-
-export type GetPromptVersionsErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        error: {
-            message: string;
-            type: 'api_validation_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    401: {
-        error: {
-            message: string;
-            type: 'api_authentication_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    403: {
-        error: {
-            message: string;
-            type: 'api_authorization_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        error: {
-            message: string;
-            type: 'api_not_found_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    409: {
-        error: {
-            message: string;
-            type: 'api_conflict_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    500: {
-        error: {
-            message: string;
-            type: 'api_internal_server_error';
-        };
-    };
-};
-
-export type GetPromptVersionsError = GetPromptVersionsErrors[keyof GetPromptVersionsErrors];
-
-export type GetPromptVersionsResponses = {
-    /**
-     * Default Response
-     */
-    200: Array<{
-        id: string;
-        organizationId: string;
-        name: string;
-        agentId: string;
-        userPrompt: string | null;
-        systemPrompt: string | null;
-        version: number;
-        parentPromptId: string | null;
-        isActive: boolean;
-        createdAt: string;
-        updatedAt: string;
-    }>;
-};
-
-export type GetPromptVersionsResponse = GetPromptVersionsResponses[keyof GetPromptVersionsResponses];
-
-export type RollbackPromptData = {
-    body: {
-        versionId: string;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/prompts/{id}/rollback';
-};
-
-export type RollbackPromptErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        error: {
-            message: string;
-            type: 'api_validation_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    401: {
-        error: {
-            message: string;
-            type: 'api_authentication_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    403: {
-        error: {
-            message: string;
-            type: 'api_authorization_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        error: {
-            message: string;
-            type: 'api_not_found_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    409: {
-        error: {
-            message: string;
-            type: 'api_conflict_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    500: {
-        error: {
-            message: string;
-            type: 'api_internal_server_error';
-        };
-    };
-};
-
-export type RollbackPromptError = RollbackPromptErrors[keyof RollbackPromptErrors];
-
-export type RollbackPromptResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        organizationId: string;
-        name: string;
-        agentId: string;
-        userPrompt: string | null;
-        systemPrompt: string | null;
-        version: number;
-        parentPromptId: string | null;
-        isActive: boolean;
-        createdAt: string;
-        updatedAt: string;
-    };
-};
-
-export type RollbackPromptResponse = RollbackPromptResponses[keyof RollbackPromptResponses];
 
 export type GetSecretsTypeData = {
     body?: never;
@@ -14947,6 +24661,7 @@ export type GetAgentStatisticsResponses = {
     200: Array<{
         agentId: string;
         agentName: string;
+        agentType: string;
         teamName: string;
         requests: number;
         inputTokens: number;
@@ -16250,7 +25965,7 @@ export type GetTokenPricesResponses = {
      */
     200: Array<{
         id: string;
-        provider: 'openai' | 'gemini' | 'anthropic';
+        provider: 'openai' | 'gemini' | 'anthropic' | 'bedrock' | 'cohere' | 'cerebras' | 'mistral' | 'vllm' | 'ollama' | 'zhipuai';
         model: string;
         pricePerMillionInput: string;
         pricePerMillionOutput: string;
@@ -16263,7 +25978,7 @@ export type GetTokenPricesResponse = GetTokenPricesResponses[keyof GetTokenPrice
 
 export type CreateTokenPriceData = {
     body: {
-        provider: 'openai' | 'gemini' | 'anthropic';
+        provider: 'openai' | 'gemini' | 'anthropic' | 'bedrock' | 'cohere' | 'cerebras' | 'mistral' | 'vllm' | 'ollama' | 'zhipuai';
         model: string;
         pricePerMillionInput: string;
         pricePerMillionOutput: string;
@@ -16338,7 +26053,7 @@ export type CreateTokenPriceResponses = {
      */
     200: {
         id: string;
-        provider: 'openai' | 'gemini' | 'anthropic';
+        provider: 'openai' | 'gemini' | 'anthropic' | 'bedrock' | 'cohere' | 'cerebras' | 'mistral' | 'vllm' | 'ollama' | 'zhipuai';
         model: string;
         pricePerMillionInput: string;
         pricePerMillionOutput: string;
@@ -16502,7 +26217,7 @@ export type GetTokenPriceResponses = {
      */
     200: {
         id: string;
-        provider: 'openai' | 'gemini' | 'anthropic';
+        provider: 'openai' | 'gemini' | 'anthropic' | 'bedrock' | 'cohere' | 'cerebras' | 'mistral' | 'vllm' | 'ollama' | 'zhipuai';
         model: string;
         pricePerMillionInput: string;
         pricePerMillionOutput: string;
@@ -16515,7 +26230,7 @@ export type GetTokenPriceResponse = GetTokenPriceResponses[keyof GetTokenPriceRe
 
 export type UpdateTokenPriceData = {
     body?: {
-        provider?: 'openai' | 'gemini' | 'anthropic';
+        provider?: 'openai' | 'gemini' | 'anthropic' | 'bedrock' | 'cohere' | 'cerebras' | 'mistral' | 'vllm' | 'ollama' | 'zhipuai';
         model?: string;
         pricePerMillionInput?: string;
         pricePerMillionOutput?: string;
@@ -16592,7 +26307,7 @@ export type UpdateTokenPriceResponses = {
      */
     200: {
         id: string;
-        provider: 'openai' | 'gemini' | 'anthropic';
+        provider: 'openai' | 'gemini' | 'anthropic' | 'bedrock' | 'cohere' | 'cerebras' | 'mistral' | 'vllm' | 'ollama' | 'zhipuai';
         model: string;
         pricePerMillionInput: string;
         pricePerMillionOutput: string;
@@ -16606,7 +26321,12 @@ export type UpdateTokenPriceResponse = UpdateTokenPriceResponses[keyof UpdateTok
 export type GetTokensData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * Filter team tokens to only show tokens for teams the profile is assigned to
+         */
+        profileId?: string;
+    };
     url: '/api/tokens';
 };
 
@@ -16936,6 +26656,7 @@ export type GetToolsResponses = {
     200: Array<{
         id: string;
         catalogId: string | null;
+        delegateToAgentId: string | null;
         name: string;
         /**
          *
@@ -16953,6 +26674,9 @@ export type GetToolsResponses = {
             [key: string]: unknown;
         };
         description: string | null;
+        policiesAutoConfiguredAt: string | null;
+        policiesAutoConfiguringStartedAt: string | null;
+        policiesAutoConfiguredReasoning: string | null;
         createdAt: string;
         updatedAt: string;
         agent: {
@@ -16967,6 +26691,300 @@ export type GetToolsResponses = {
 };
 
 export type GetToolsResponse = GetToolsResponses[keyof GetToolsResponses];
+
+export type GetToolsWithAssignmentsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        search?: string;
+        /**
+         * Can be 'llm-proxy' or a catalogId
+         */
+        origin?: string;
+        /**
+         * Hide built-in Archestra tools
+         */
+        excludeArchestraTools?: boolean;
+        sortBy?: 'name' | 'origin' | 'createdAt' | 'assignmentCount';
+        sortDirection?: 'asc' | 'desc';
+        limit?: number;
+        offset?: number;
+    };
+    url: '/api/tools/with-assignments';
+};
+
+export type GetToolsWithAssignmentsErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type GetToolsWithAssignmentsError = GetToolsWithAssignmentsErrors[keyof GetToolsWithAssignmentsErrors];
+
+export type GetToolsWithAssignmentsResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        data: Array<{
+            id: string;
+            name: string;
+            description: string | null;
+            /**
+             *
+             * https://github.com/openai/openai-node/blob/master/src/resources/shared.ts#L217
+             *
+             * The parameters the functions accepts, described as a JSON Schema object. See the
+             * [guide](https://platform.openai.com/docs/guides/function-calling) for examples,
+             * and the [JSON Schema reference](https://json-schema.org/understanding-json-schema/) for
+             * documentation about the format.
+             *
+             * Omitting parameters defines a function with an empty parameter list.
+             *
+             */
+            parameters?: {
+                [key: string]: unknown;
+            };
+            catalogId: string | null;
+            mcpServerId: string | null;
+            mcpServerName: string | null;
+            mcpServerCatalogId: string | null;
+            createdAt: string;
+            updatedAt: string;
+            assignmentCount: number;
+            assignments: Array<{
+                agentToolId: string;
+                agent: {
+                    id: string;
+                    name: string;
+                };
+                credentialSourceMcpServerId: string | null;
+                credentialOwnerEmail: string | null;
+                executionSourceMcpServerId: string | null;
+                executionOwnerEmail: string | null;
+                useDynamicTeamCredential: boolean;
+                responseModifierTemplate: string | null;
+            }>;
+        }>;
+        pagination: {
+            currentPage: number;
+            limit: number;
+            total: number;
+            totalPages: number;
+            hasNext: boolean;
+            hasPrev: boolean;
+        };
+    };
+};
+
+export type GetToolsWithAssignmentsResponse = GetToolsWithAssignmentsResponses[keyof GetToolsWithAssignmentsResponses];
+
+export type DeleteToolData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/tools/{id}';
+};
+
+export type DeleteToolErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type DeleteToolError = DeleteToolErrors[keyof DeleteToolErrors];
+
+export type DeleteToolResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        success: boolean;
+    };
+};
+
+export type DeleteToolResponse = DeleteToolResponses[keyof DeleteToolResponses];
+
+export type GetUserPermissionsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/user/permissions';
+};
+
+export type GetUserPermissionsErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type GetUserPermissionsError = GetUserPermissionsErrors[keyof GetUserPermissionsErrors];
+
+export type GetUserPermissionsResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        [key: string]: Array<'create' | 'read' | 'update' | 'delete' | 'admin' | 'cancel'>;
+    };
+};
+
+export type GetUserPermissionsResponse = GetUserPermissionsResponses[keyof GetUserPermissionsResponses];
 
 export type GetUserTokenData = {
     body?: never;
@@ -17208,105 +27226,24 @@ export type RotateUserTokenResponses = {
 
 export type RotateUserTokenResponse = RotateUserTokenResponses[keyof RotateUserTokenResponses];
 
-export type GetRolesData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/roles';
-};
-
-export type GetRolesErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        error: {
-            message: string;
-            type: 'api_validation_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    401: {
-        error: {
-            message: string;
-            type: 'api_authentication_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    403: {
-        error: {
-            message: string;
-            type: 'api_authorization_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        error: {
-            message: string;
-            type: 'api_not_found_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    409: {
-        error: {
-            message: string;
-            type: 'api_conflict_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    500: {
-        error: {
-            message: string;
-            type: 'api_internal_server_error';
-        };
-    };
-};
-
-export type GetRolesError = GetRolesErrors[keyof GetRolesErrors];
-
-export type GetRolesResponses = {
-    /**
-     * Default Response
-     */
-    200: Array<{
-        id: string;
-        organizationId?: string;
-        role: string;
-        name: string;
-        permission: {
-            [key: string]: Array<'create' | 'read' | 'update' | 'delete' | 'admin' | 'cancel'>;
-        };
-        createdAt: string;
-        updatedAt: string | null;
-        predefined: boolean;
-    }>;
-};
-
-export type GetRolesResponse = GetRolesResponses[keyof GetRolesResponses];
-
-export type CreateRoleData = {
-    body: {
-        name: string;
-        permission: {
-            [key: string]: Array<'create' | 'read' | 'update' | 'delete' | 'admin' | 'cancel'>;
-        };
+export type VllmChatCompletionsWithDefaultAgentData = {
+    body?: VllmChatCompletionRequestInput;
+    headers?: {
+        /**
+         * The user agent of the client
+         */
+        'user-agent'?: string;
+        /**
+         * Bearer token for vLLM (often not required)
+         */
+        authorization?: string;
     };
     path?: never;
     query?: never;
-    url: '/api/roles';
+    url: '/v1/vllm/chat/completions';
 };
 
-export type CreateRoleErrors = {
+export type VllmChatCompletionsWithDefaultAgentErrors = {
     /**
      * Default Response
      */
@@ -17363,219 +27300,37 @@ export type CreateRoleErrors = {
     };
 };
 
-export type CreateRoleError = CreateRoleErrors[keyof CreateRoleErrors];
+export type VllmChatCompletionsWithDefaultAgentError = VllmChatCompletionsWithDefaultAgentErrors[keyof VllmChatCompletionsWithDefaultAgentErrors];
 
-export type CreateRoleResponses = {
+export type VllmChatCompletionsWithDefaultAgentResponses = {
     /**
      * Default Response
      */
-    200: {
-        id: string;
-        organizationId?: string;
-        role: string;
-        name: string;
-        permission: {
-            [key: string]: Array<'create' | 'read' | 'update' | 'delete' | 'admin' | 'cancel'>;
-        };
-        createdAt: string;
-        updatedAt: string | null;
-        predefined: boolean;
-    };
+    200: VllmChatCompletionResponse;
 };
 
-export type CreateRoleResponse = CreateRoleResponses[keyof CreateRoleResponses];
+export type VllmChatCompletionsWithDefaultAgentResponse = VllmChatCompletionsWithDefaultAgentResponses[keyof VllmChatCompletionsWithDefaultAgentResponses];
 
-export type DeleteRoleData = {
-    body?: never;
-    path: {
+export type VllmChatCompletionsWithAgentData = {
+    body?: VllmChatCompletionRequestInput;
+    headers?: {
         /**
-         * Custom role ID (base62)
+         * The user agent of the client
          */
-        roleId: string;
-    };
-    query?: never;
-    url: '/api/roles/{roleId}';
-};
-
-export type DeleteRoleErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        error: {
-            message: string;
-            type: 'api_validation_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    401: {
-        error: {
-            message: string;
-            type: 'api_authentication_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    403: {
-        error: {
-            message: string;
-            type: 'api_authorization_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        error: {
-            message: string;
-            type: 'api_not_found_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    409: {
-        error: {
-            message: string;
-            type: 'api_conflict_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    500: {
-        error: {
-            message: string;
-            type: 'api_internal_server_error';
-        };
-    };
-};
-
-export type DeleteRoleError = DeleteRoleErrors[keyof DeleteRoleErrors];
-
-export type DeleteRoleResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        success: boolean;
-    };
-};
-
-export type DeleteRoleResponse = DeleteRoleResponses[keyof DeleteRoleResponses];
-
-export type GetRoleData = {
-    body?: never;
-    path: {
+        'user-agent'?: string;
         /**
-         * Predefined role name or custom role ID
+         * Bearer token for vLLM (often not required)
          */
-        roleId: 'admin' | 'editor' | 'member' | string;
-    };
-    query?: never;
-    url: '/api/roles/{roleId}';
-};
-
-export type GetRoleErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        error: {
-            message: string;
-            type: 'api_validation_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    401: {
-        error: {
-            message: string;
-            type: 'api_authentication_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    403: {
-        error: {
-            message: string;
-            type: 'api_authorization_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        error: {
-            message: string;
-            type: 'api_not_found_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    409: {
-        error: {
-            message: string;
-            type: 'api_conflict_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    500: {
-        error: {
-            message: string;
-            type: 'api_internal_server_error';
-        };
-    };
-};
-
-export type GetRoleError = GetRoleErrors[keyof GetRoleErrors];
-
-export type GetRoleResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        id: string;
-        organizationId?: string;
-        role: string;
-        name: string;
-        permission: {
-            [key: string]: Array<'create' | 'read' | 'update' | 'delete' | 'admin' | 'cancel'>;
-        };
-        createdAt: string;
-        updatedAt: string | null;
-        predefined: boolean;
-    };
-};
-
-export type GetRoleResponse = GetRoleResponses[keyof GetRoleResponses];
-
-export type UpdateRoleData = {
-    body?: {
-        name?: string;
-        permission?: {
-            [key: string]: Array<'create' | 'read' | 'update' | 'delete' | 'admin' | 'cancel'>;
-        };
+        authorization?: string;
     };
     path: {
-        /**
-         * Predefined role name or custom role ID
-         */
-        roleId: 'admin' | 'editor' | 'member' | string;
+        agentId: string;
     };
     query?: never;
-    url: '/api/roles/{roleId}';
+    url: '/v1/vllm/{agentId}/chat/completions';
 };
 
-export type UpdateRoleErrors = {
+export type VllmChatCompletionsWithAgentErrors = {
     /**
      * Default Response
      */
@@ -17632,36 +27387,199 @@ export type UpdateRoleErrors = {
     };
 };
 
-export type UpdateRoleError = UpdateRoleErrors[keyof UpdateRoleErrors];
+export type VllmChatCompletionsWithAgentError = VllmChatCompletionsWithAgentErrors[keyof VllmChatCompletionsWithAgentErrors];
 
-export type UpdateRoleResponses = {
+export type VllmChatCompletionsWithAgentResponses = {
     /**
      * Default Response
      */
-    200: {
-        id: string;
-        organizationId?: string;
-        role: string;
-        name: string;
-        permission: {
-            [key: string]: Array<'create' | 'read' | 'update' | 'delete' | 'admin' | 'cancel'>;
+    200: VllmChatCompletionResponse;
+};
+
+export type VllmChatCompletionsWithAgentResponse = VllmChatCompletionsWithAgentResponses[keyof VllmChatCompletionsWithAgentResponses];
+
+export type ZhipuaiChatCompletionsWithDefaultAgentData = {
+    body?: ZhipuaiChatCompletionRequestInput;
+    headers: {
+        /**
+         * The user agent of the client
+         */
+        'user-agent'?: string;
+        /**
+         * Bearer token for Zhipu AI
+         */
+        authorization: string;
+        'accept-language'?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/v1/zhipuai/chat/completions';
+};
+
+export type ZhipuaiChatCompletionsWithDefaultAgentErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
         };
-        createdAt: string;
-        updatedAt: string | null;
-        predefined: boolean;
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
     };
 };
 
-export type UpdateRoleResponse = UpdateRoleResponses[keyof UpdateRoleResponses];
+export type ZhipuaiChatCompletionsWithDefaultAgentError = ZhipuaiChatCompletionsWithDefaultAgentErrors[keyof ZhipuaiChatCompletionsWithDefaultAgentErrors];
 
-export type GetPublicSsoProvidersData = {
+export type ZhipuaiChatCompletionsWithDefaultAgentResponses = {
+    /**
+     * Default Response
+     */
+    200: ZhipuaiChatCompletionResponse;
+};
+
+export type ZhipuaiChatCompletionsWithDefaultAgentResponse = ZhipuaiChatCompletionsWithDefaultAgentResponses[keyof ZhipuaiChatCompletionsWithDefaultAgentResponses];
+
+export type ZhipuaiChatCompletionsWithAgentData = {
+    body?: ZhipuaiChatCompletionRequestInput;
+    headers: {
+        /**
+         * The user agent of the client
+         */
+        'user-agent'?: string;
+        /**
+         * Bearer token for Zhipu AI
+         */
+        authorization: string;
+        'accept-language'?: string;
+    };
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/v1/zhipuai/{agentId}/chat/completions';
+};
+
+export type ZhipuaiChatCompletionsWithAgentErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type ZhipuaiChatCompletionsWithAgentError = ZhipuaiChatCompletionsWithAgentErrors[keyof ZhipuaiChatCompletionsWithAgentErrors];
+
+export type ZhipuaiChatCompletionsWithAgentResponses = {
+    /**
+     * Default Response
+     */
+    200: ZhipuaiChatCompletionResponse;
+};
+
+export type ZhipuaiChatCompletionsWithAgentResponse = ZhipuaiChatCompletionsWithAgentResponses[keyof ZhipuaiChatCompletionsWithAgentResponses];
+
+export type GetPublicIdentityProvidersData = {
     body?: never;
     path?: never;
     query?: never;
-    url: '/api/sso-providers/public';
+    url: '/api/identity-providers/public';
 };
 
-export type GetPublicSsoProvidersErrors = {
+export type GetPublicIdentityProvidersErrors = {
     /**
      * Default Response
      */
@@ -17718,9 +27636,9 @@ export type GetPublicSsoProvidersErrors = {
     };
 };
 
-export type GetPublicSsoProvidersError = GetPublicSsoProvidersErrors[keyof GetPublicSsoProvidersErrors];
+export type GetPublicIdentityProvidersError = GetPublicIdentityProvidersErrors[keyof GetPublicIdentityProvidersErrors];
 
-export type GetPublicSsoProvidersResponses = {
+export type GetPublicIdentityProvidersResponses = {
     /**
      * Default Response
      */
@@ -17730,16 +27648,16 @@ export type GetPublicSsoProvidersResponses = {
     }>;
 };
 
-export type GetPublicSsoProvidersResponse = GetPublicSsoProvidersResponses[keyof GetPublicSsoProvidersResponses];
+export type GetPublicIdentityProvidersResponse = GetPublicIdentityProvidersResponses[keyof GetPublicIdentityProvidersResponses];
 
-export type GetSsoProvidersData = {
+export type GetIdentityProvidersData = {
     body?: never;
     path?: never;
     query?: never;
-    url: '/api/sso-providers';
+    url: '/api/identity-providers';
 };
 
-export type GetSsoProvidersErrors = {
+export type GetIdentityProvidersErrors = {
     /**
      * Default Response
      */
@@ -17796,9 +27714,9 @@ export type GetSsoProvidersErrors = {
     };
 };
 
-export type GetSsoProvidersError = GetSsoProvidersErrors[keyof GetSsoProvidersErrors];
+export type GetIdentityProvidersError = GetIdentityProvidersErrors[keyof GetIdentityProvidersErrors];
 
-export type GetSsoProvidersResponses = {
+export type GetIdentityProvidersResponses = {
     /**
      * Default Response
      */
@@ -17915,9 +27833,9 @@ export type GetSsoProvidersResponses = {
     }>;
 };
 
-export type GetSsoProvidersResponse = GetSsoProvidersResponses[keyof GetSsoProvidersResponses];
+export type GetIdentityProvidersResponse = GetIdentityProvidersResponses[keyof GetIdentityProvidersResponses];
 
-export type CreateSsoProviderData = {
+export type CreateIdentityProviderData = {
     body: {
         issuer: string;
         /**
@@ -18029,10 +27947,10 @@ export type CreateSsoProviderData = {
     };
     path?: never;
     query?: never;
-    url: '/api/sso-providers';
+    url: '/api/identity-providers';
 };
 
-export type CreateSsoProviderErrors = {
+export type CreateIdentityProviderErrors = {
     /**
      * Default Response
      */
@@ -18089,9 +28007,9 @@ export type CreateSsoProviderErrors = {
     };
 };
 
-export type CreateSsoProviderError = CreateSsoProviderErrors[keyof CreateSsoProviderErrors];
+export type CreateIdentityProviderError = CreateIdentityProviderErrors[keyof CreateIdentityProviderErrors];
 
-export type CreateSsoProviderResponses = {
+export type CreateIdentityProviderResponses = {
     /**
      * Default Response
      */
@@ -18208,18 +28126,16 @@ export type CreateSsoProviderResponses = {
     };
 };
 
-export type CreateSsoProviderResponse = CreateSsoProviderResponses[keyof CreateSsoProviderResponses];
+export type CreateIdentityProviderResponse = CreateIdentityProviderResponses[keyof CreateIdentityProviderResponses];
 
-export type DeleteSsoProviderData = {
+export type GetIdentityProviderIdpLogoutUrlData = {
     body?: never;
-    path: {
-        id: string;
-    };
+    path?: never;
     query?: never;
-    url: '/api/sso-providers/{id}';
+    url: '/api/identity-providers/idp-logout-url';
 };
 
-export type DeleteSsoProviderErrors = {
+export type GetIdentityProviderIdpLogoutUrlErrors = {
     /**
      * Default Response
      */
@@ -18276,9 +28192,88 @@ export type DeleteSsoProviderErrors = {
     };
 };
 
-export type DeleteSsoProviderError = DeleteSsoProviderErrors[keyof DeleteSsoProviderErrors];
+export type GetIdentityProviderIdpLogoutUrlError = GetIdentityProviderIdpLogoutUrlErrors[keyof GetIdentityProviderIdpLogoutUrlErrors];
 
-export type DeleteSsoProviderResponses = {
+export type GetIdentityProviderIdpLogoutUrlResponses = {
+    /**
+     * Default Response
+     */
+    200: {
+        url: string | null;
+    };
+};
+
+export type GetIdentityProviderIdpLogoutUrlResponse = GetIdentityProviderIdpLogoutUrlResponses[keyof GetIdentityProviderIdpLogoutUrlResponses];
+
+export type DeleteIdentityProviderData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/identity-providers/{id}';
+};
+
+export type DeleteIdentityProviderErrors = {
+    /**
+     * Default Response
+     */
+    400: {
+        error: {
+            message: string;
+            type: 'api_validation_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    401: {
+        error: {
+            message: string;
+            type: 'api_authentication_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    403: {
+        error: {
+            message: string;
+            type: 'api_authorization_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    404: {
+        error: {
+            message: string;
+            type: 'api_not_found_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    409: {
+        error: {
+            message: string;
+            type: 'api_conflict_error';
+        };
+    };
+    /**
+     * Default Response
+     */
+    500: {
+        error: {
+            message: string;
+            type: 'api_internal_server_error';
+        };
+    };
+};
+
+export type DeleteIdentityProviderError = DeleteIdentityProviderErrors[keyof DeleteIdentityProviderErrors];
+
+export type DeleteIdentityProviderResponses = {
     /**
      * Default Response
      */
@@ -18287,18 +28282,18 @@ export type DeleteSsoProviderResponses = {
     };
 };
 
-export type DeleteSsoProviderResponse = DeleteSsoProviderResponses[keyof DeleteSsoProviderResponses];
+export type DeleteIdentityProviderResponse = DeleteIdentityProviderResponses[keyof DeleteIdentityProviderResponses];
 
-export type GetSsoProviderData = {
+export type GetIdentityProviderData = {
     body?: never;
     path: {
         id: string;
     };
     query?: never;
-    url: '/api/sso-providers/{id}';
+    url: '/api/identity-providers/{id}';
 };
 
-export type GetSsoProviderErrors = {
+export type GetIdentityProviderErrors = {
     /**
      * Default Response
      */
@@ -18355,9 +28350,9 @@ export type GetSsoProviderErrors = {
     };
 };
 
-export type GetSsoProviderError = GetSsoProviderErrors[keyof GetSsoProviderErrors];
+export type GetIdentityProviderError = GetIdentityProviderErrors[keyof GetIdentityProviderErrors];
 
-export type GetSsoProviderResponses = {
+export type GetIdentityProviderResponses = {
     /**
      * Default Response
      */
@@ -18474,9 +28469,9 @@ export type GetSsoProviderResponses = {
     };
 };
 
-export type GetSsoProviderResponse = GetSsoProviderResponses[keyof GetSsoProviderResponses];
+export type GetIdentityProviderResponse = GetIdentityProviderResponses[keyof GetIdentityProviderResponses];
 
-export type UpdateSsoProviderData = {
+export type UpdateIdentityProviderData = {
     body?: {
         issuer?: string;
         /**
@@ -18589,10 +28584,10 @@ export type UpdateSsoProviderData = {
         id: string;
     };
     query?: never;
-    url: '/api/sso-providers/{id}';
+    url: '/api/identity-providers/{id}';
 };
 
-export type UpdateSsoProviderErrors = {
+export type UpdateIdentityProviderErrors = {
     /**
      * Default Response
      */
@@ -18649,9 +28644,9 @@ export type UpdateSsoProviderErrors = {
     };
 };
 
-export type UpdateSsoProviderError = UpdateSsoProviderErrors[keyof UpdateSsoProviderErrors];
+export type UpdateIdentityProviderError = UpdateIdentityProviderErrors[keyof UpdateIdentityProviderErrors];
 
-export type UpdateSsoProviderResponses = {
+export type UpdateIdentityProviderResponses = {
     /**
      * Default Response
      */
@@ -18768,7 +28763,7 @@ export type UpdateSsoProviderResponses = {
     };
 };
 
-export type UpdateSsoProviderResponse = UpdateSsoProviderResponses[keyof UpdateSsoProviderResponses];
+export type UpdateIdentityProviderResponse = UpdateIdentityProviderResponses[keyof UpdateIdentityProviderResponses];
 
 export type DeleteTeamVaultFolderData = {
     body?: never;
@@ -19260,80 +29255,3 @@ export type GetTeamVaultSecretKeysResponses = {
 };
 
 export type GetTeamVaultSecretKeysResponse = GetTeamVaultSecretKeysResponses[keyof GetTeamVaultSecretKeysResponses];
-
-export type GetUserPermissionsData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/user/permissions';
-};
-
-export type GetUserPermissionsErrors = {
-    /**
-     * Default Response
-     */
-    400: {
-        error: {
-            message: string;
-            type: 'api_validation_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    401: {
-        error: {
-            message: string;
-            type: 'api_authentication_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    403: {
-        error: {
-            message: string;
-            type: 'api_authorization_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    404: {
-        error: {
-            message: string;
-            type: 'api_not_found_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    409: {
-        error: {
-            message: string;
-            type: 'api_conflict_error';
-        };
-    };
-    /**
-     * Default Response
-     */
-    500: {
-        error: {
-            message: string;
-            type: 'api_internal_server_error';
-        };
-    };
-};
-
-export type GetUserPermissionsError = GetUserPermissionsErrors[keyof GetUserPermissionsErrors];
-
-export type GetUserPermissionsResponses = {
-    /**
-     * Default Response
-     */
-    200: {
-        [key: string]: Array<'create' | 'read' | 'update' | 'delete' | 'admin' | 'cancel'>;
-    };
-};
-
-export type GetUserPermissionsResponse = GetUserPermissionsResponses[keyof GetUserPermissionsResponses];

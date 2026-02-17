@@ -67,6 +67,14 @@ export const test = base.extend<TestFixtures>({
   },
   extractCookieHeaders: async ({}, use) => {
     await use(async (page: Page) => {
+      // Ensure page has navigated to establish cookie context
+      // This is needed because some tests call extractCookieHeaders before navigating
+      if (page.url() === "about:blank") {
+        await page.goto(`${UI_BASE_URL}/`);
+        // Use "domcontentloaded" instead of "networkidle" to avoid timeouts
+        // caused by persistent WebSocket connections keeping the network busy
+        await page.waitForLoadState("domcontentloaded");
+      }
       const cookies = await page.context().cookies();
       return cookies
         .map((cookie) => `${cookie.name}=${cookie.value}`)

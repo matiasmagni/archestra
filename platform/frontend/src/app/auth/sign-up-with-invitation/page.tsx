@@ -9,7 +9,7 @@ import { authClient } from "@/lib/clients/auth/auth-client";
 import { useInvitationCheck } from "@/lib/invitation.query";
 import { useAcceptInvitation } from "@/lib/organization.query";
 
-export default function SignUpWithInvitationPage() {
+function SignUpWithInvitationContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [hasProcessed, setHasProcessed] = useState(false);
@@ -30,6 +30,7 @@ export default function SignUpWithInvitationPage() {
   }, [invitationId, invitationData, router]);
 
   // Handle auto-accept after sign-up
+  // biome-ignore lint/correctness/useExhaustiveDependencies: acceptMutation object changes reference on every render. Using the stable mutateAsync function reference prevents unnecessary re-executions.
   useEffect(() => {
     // Only process if we've done initial check and now have a new session
     if (session && invitationId && !hasProcessed) {
@@ -83,13 +84,9 @@ export default function SignUpWithInvitationPage() {
   // Show loading while checking if user exists
   if (isCheckingInvitation && invitationId) {
     return (
-      <ErrorBoundary>
-        <Suspense fallback={<LoadingSpinner />}>
-          <main className="h-full flex items-center justify-center">
-            <LoadingSpinner />
-          </main>
-        </Suspense>
-      </ErrorBoundary>
+      <main className="h-full flex items-center justify-center">
+        <LoadingSpinner />
+      </main>
     );
   }
 
@@ -123,6 +120,16 @@ export default function SignUpWithInvitationPage() {
             </div>
           </div>
         </main>
+      </Suspense>
+    </ErrorBoundary>
+  );
+}
+
+export default function SignUpWithInvitationPage() {
+  return (
+    <ErrorBoundary>
+      <Suspense fallback={<LoadingSpinner />}>
+        <SignUpWithInvitationContent />
       </Suspense>
     </ErrorBoundary>
   );

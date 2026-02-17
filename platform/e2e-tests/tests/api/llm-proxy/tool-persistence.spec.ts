@@ -130,6 +130,150 @@ const geminiConfig: ToolPersistenceTestConfig = {
   }),
 };
 
+const cerebrasConfig: ToolPersistenceTestConfig = {
+  providerName: "Cerebras",
+
+  endpoint: (agentId) => `/v1/cerebras/${agentId}/chat/completions`,
+
+  headers: (wiremockStub) => ({
+    Authorization: `Bearer ${wiremockStub}`,
+    "Content-Type": "application/json",
+  }),
+
+  buildRequest: (content, tools) => ({
+    model: "llama-4-scout-17b-16e-instruct",
+    messages: [{ role: "user", content }],
+    tools: tools.map((t) => ({
+      type: "function",
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: t.parameters,
+      },
+    })),
+  }),
+};
+
+const mistralConfig: ToolPersistenceTestConfig = {
+  providerName: "Mistral",
+
+  endpoint: (agentId) => `/v1/mistral/${agentId}/chat/completions`,
+
+  headers: (wiremockStub) => ({
+    Authorization: `Bearer ${wiremockStub}`,
+    "Content-Type": "application/json",
+  }),
+
+  buildRequest: (content, tools) => ({
+    model: "mistral-large-latest",
+    messages: [{ role: "user", content }],
+    tools: tools.map((t) => ({
+      type: "function",
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: t.parameters,
+      },
+    })),
+  }),
+};
+
+const vllmConfig: ToolPersistenceTestConfig = {
+  providerName: "vLLM",
+
+  endpoint: (agentId) => `/v1/vllm/${agentId}/chat/completions`,
+
+  headers: (wiremockStub) => ({
+    Authorization: `Bearer ${wiremockStub}`,
+    "Content-Type": "application/json",
+  }),
+
+  buildRequest: (content, tools) => ({
+    model: "meta-llama/Llama-3.1-8B-Instruct",
+    messages: [{ role: "user", content }],
+    tools: tools.map((t) => ({
+      type: "function",
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: t.parameters,
+      },
+    })),
+  }),
+};
+
+const ollamaConfig: ToolPersistenceTestConfig = {
+  providerName: "Ollama",
+
+  endpoint: (agentId) => `/v1/ollama/${agentId}/chat/completions`,
+
+  headers: (wiremockStub) => ({
+    Authorization: `Bearer ${wiremockStub}`,
+    "Content-Type": "application/json",
+  }),
+
+  buildRequest: (content, tools) => ({
+    model: "qwen2:0.5b",
+    messages: [{ role: "user", content }],
+    tools: tools.map((t) => ({
+      type: "function",
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: t.parameters,
+      },
+    })),
+  }),
+};
+
+const zhipuaiConfig: ToolPersistenceTestConfig = {
+  providerName: "Zhipuai",
+
+  endpoint: (agentId) => `/v1/zhipuai/${agentId}/chat/completions`,
+
+  headers: (wiremockStub) => ({
+    Authorization: `Bearer ${wiremockStub}`,
+    "Content-Type": "application/json",
+  }),
+
+  buildRequest: (content, tools) => ({
+    model: "glm-4.5-flash",
+    messages: [{ role: "user", content }],
+    tools: tools.map((t) => ({
+      type: "function",
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: t.parameters,
+      },
+    })),
+  }),
+};
+
+const cohereConfig: ToolPersistenceTestConfig = {
+  providerName: "Cohere",
+
+  endpoint: (agentId) => `/v1/cohere/${agentId}/chat`,
+
+  headers: (wiremockStub) => ({
+    Authorization: `Bearer ${wiremockStub}`,
+    "Content-Type": "application/json",
+  }),
+
+  buildRequest: (content, tools) => ({
+    model: "command-r-plus-08-2024",
+    messages: [{ role: "user", content: [{ type: "text", text: content }] }],
+    tools: tools.map((t) => ({
+      type: "function",
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: t.parameters,
+      },
+    })),
+  }),
+};
+
 // =============================================================================
 // Test Suite
 // =============================================================================
@@ -138,6 +282,12 @@ const testConfigs: ToolPersistenceTestConfig[] = [
   openaiConfig,
   anthropicConfig,
   geminiConfig,
+  cohereConfig,
+  cerebrasConfig,
+  mistralConfig,
+  vllmConfig,
+  ollamaConfig,
+  zhipuaiConfig,
 ];
 
 for (const config of testConfigs) {
