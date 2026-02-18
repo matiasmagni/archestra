@@ -1537,12 +1537,12 @@ class McpClient {
       { capabilities: {} },
     );
 
-    await Promise.race([
-      client.connect(transport),
-      this.createTimeout(15000, "Resource connection timeout"),
-    ]);
-
     try {
+      await Promise.race([
+        client.connect(transport),
+        this.createTimeout(15000, "Resource connection timeout"),
+      ]);
+
       // MCP SDK Client.readResource(params: { uri: string }) for resources/read (e.g. MCP Apps ui://)
       const readResource = (
         client as {
@@ -1557,7 +1557,6 @@ class McpClient {
         }
       ).readResource;
       if (!readResource || typeof readResource !== "function") {
-        await client.close();
         throw new Error(
           "MCP server does not support reading resources (resources/read)",
         );
