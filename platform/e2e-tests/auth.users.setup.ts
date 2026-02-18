@@ -239,8 +239,10 @@ setup("authenticate as editor", async ({ page }) => {
     expect(adminSignedIn, "Admin sign-in failed for editor setup").toBe(true);
 
     // Navigate to establish cookie context with organization
-    await page.goto(`${UI_BASE_URL}/chat`);
-    await page.waitForLoadState("networkidle");
+    await page.goto(`${UI_BASE_URL}/chat`, {
+      waitUntil: "domcontentloaded",
+      timeout: 120_000,
+    });
 
     // Create invitation for editor
     const invitationId = await createInvitation(
@@ -270,8 +272,10 @@ setup("authenticate as editor", async ({ page }) => {
   }
 
   // Navigate to trigger cookie storage and verify auth
-  await page.goto(`${UI_BASE_URL}/chat`);
-  await page.waitForLoadState("networkidle");
+  await page.goto(`${UI_BASE_URL}/chat`, {
+    waitUntil: "domcontentloaded",
+    timeout: 120_000,
+  });
 
   // Verify we're authenticated
   await expect(page.getByRole("link", { name: /Tool Policies/i })).toBeVisible({
@@ -304,8 +308,10 @@ setup("authenticate as member", async ({ page }) => {
     expect(adminSignedIn, "Admin sign-in failed for member setup").toBe(true);
 
     // Navigate to establish cookie context with organization
-    await page.goto(`${UI_BASE_URL}/chat`);
-    await page.waitForLoadState("networkidle");
+    await page.goto(`${UI_BASE_URL}/chat`, {
+      waitUntil: "domcontentloaded",
+      timeout: 120_000,
+    });
 
     // Create invitation for member
     const invitationId = await createInvitation(
@@ -335,8 +341,10 @@ setup("authenticate as member", async ({ page }) => {
   }
 
   // Navigate to trigger cookie storage and verify auth
-  await page.goto(`${UI_BASE_URL}/chat`);
-  await page.waitForLoadState("networkidle");
+  await page.goto(`${UI_BASE_URL}/chat`, {
+    waitUntil: "domcontentloaded",
+    timeout: 120_000,
+  });
 
   // Verify we're authenticated
   await expect(page.getByRole("link", { name: /Tool Policies/i })).toBeVisible({

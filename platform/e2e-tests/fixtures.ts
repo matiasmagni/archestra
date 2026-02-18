@@ -13,6 +13,12 @@ import { editorAuthFile, memberAuthFile, UI_BASE_URL } from "./consts";
 /** Type for user-specific navigation function */
 type GoToPageFn = (path?: string) => ReturnType<Page["goto"]>;
 
+/** Navigation options: domcontentloaded avoids timeouts from slow/streaming resources and cold Next.js compile */
+const NAV_OPTS = {
+  waitUntil: "domcontentloaded" as const,
+  timeout: 120_000,
+};
+
 /**
  * Playwright test extension with fixtures
  * https://playwright.dev/docs/test-fixtures#creating-a-fixture
@@ -36,7 +42,7 @@ interface TestFixtures {
 }
 
 export const goToPage = async (page: Page, path = "") => {
-  await page.goto(`${UI_BASE_URL}${path}`);
+  await page.goto(`${UI_BASE_URL}${path}`, NAV_OPTS);
   await page.waitForTimeout(500);
 };
 
@@ -70,10 +76,7 @@ export const test = base.extend<TestFixtures>({
       // Ensure page has navigated to establish cookie context
       // This is needed because some tests call extractCookieHeaders before navigating
       if (page.url() === "about:blank") {
-        await page.goto(`${UI_BASE_URL}/`);
-        // Use "domcontentloaded" instead of "networkidle" to avoid timeouts
-        // caused by persistent WebSocket connections keeping the network busy
-        await page.waitForLoadState("domcontentloaded");
+        await page.goto(`${UI_BASE_URL}/`, NAV_OPTS);
       }
       const cookies = await page.context().cookies();
       return cookies
@@ -114,18 +117,22 @@ export const test = base.extend<TestFixtures>({
    * Navigate admin page to a path
    */
   goToAdminPage: async ({ adminPage }, use) => {
-    await use((path = "") => adminPage.goto(`${UI_BASE_URL}${path}`));
+    await use((path = "") => adminPage.goto(`${UI_BASE_URL}${path}`, NAV_OPTS));
   },
   /**
    * Navigate editor page to a path
    */
   goToEditorPage: async ({ editorPage }, use) => {
-    await use((path = "") => editorPage.goto(`${UI_BASE_URL}${path}`));
+    await use((path = "") =>
+      editorPage.goto(`${UI_BASE_URL}${path}`, NAV_OPTS),
+    );
   },
   /**
    * Navigate member page to a path
    */
   goToMemberPage: async ({ memberPage }, use) => {
-    await use((path = "") => memberPage.goto(`${UI_BASE_URL}${path}`));
+    await use((path = "") =>
+      memberPage.goto(`${UI_BASE_URL}${path}`, NAV_OPTS),
+    );
   },
 });

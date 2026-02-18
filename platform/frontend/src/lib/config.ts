@@ -5,16 +5,17 @@ const environment: "development" | "production" =
   (process.env.NODE_ENV?.toLowerCase() as "development" | "production") ??
   "development";
 
-const DEFAULT_BACKEND_URL = "http://localhost:9000";
+// Use 127.0.0.1 to avoid ECONNREFUSED when localhost resolves to ::1 (IPv6) and backend listens on IPv4
+const DEFAULT_BACKEND_URL = "http://127.0.0.1:9000";
 
 /**
  * Get the backend API base URL.
- * Returns the configured URL or defaults to localhost:9000 for development.
+ * Returns the configured URL or defaults to 127.0.0.1:9000 for development.
  *
  * Priority:
  * 1. NEXT_PUBLIC_ARCHESTRA_INTERNAL_API_BASE_URL (runtime env var for client/server)
  * 2. ARCHESTRA_INTERNAL_API_BASE_URL (server-side only, for SSR/API routes)
- * 3. Default: http://localhost:9000
+ * 3. Default: http://127.0.0.1:9000
  */
 export const getBackendBaseUrl = (): string => {
   // Try runtime env var first (works in both client and server)
@@ -98,9 +99,8 @@ export const getWebSocketUrl = (): string => {
 
   // Server-side: use absolute URL
   const backendBaseUrl = getBackendBaseUrl();
-  const wsBaseUrl = backendBaseUrl
-    ? backendBaseUrl.replace(/^http/, "ws")
-    : "ws://localhost:9000";
+  // getBackendBaseUrl() always returns a value (defaults to http://127.0.0.1:9000)
+  const wsBaseUrl = backendBaseUrl.replace(/^http/, "ws");
   return `${wsBaseUrl}/ws`;
 };
 

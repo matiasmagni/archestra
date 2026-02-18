@@ -419,7 +419,12 @@ export default {
     },
   },
   auth: {
-    secret: process.env.ARCHESTRA_AUTH_SECRET,
+    // Better Auth requires a secret (min 32 chars). In dev/E2E, use a fallback if unset.
+    secret:
+      process.env.ARCHESTRA_AUTH_SECRET?.trim() ||
+      (isDevelopment
+        ? "archestra-dev-secret-do-not-use-in-production-32ch"
+        : undefined),
     trustedOrigins: getTrustedOrigins(),
     adminDefaultEmail:
       process.env[DEFAULT_ADMIN_EMAIL_ENV_VAR_NAME] || DEFAULT_ADMIN_EMAIL,

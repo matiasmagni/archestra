@@ -11,6 +11,6 @@ export default {
     'subject-full-stop': [2, 'never', '.'],
     'type-case': [2, 'always', ['lower-case', 'camel-case']],
     'type-empty': [2, 'never'],
-    'type-enum': [2, 'always', ['feat', 'fix', 'perf', 'docs', 'deps', 'ci', 'refactor', 'revert', 'test', 'chore']],
+    'type-enum': [2, 'always', ['feat', 'fix', 'perf', 'docs', 'deps', 'ci', 'refactor', 'revert', 'test', 'chore', 'claim']],
   },
 };

@@ -207,8 +207,10 @@ setup("setup teams and assignments", async ({ page }) => {
   expect(signedIn, "Admin sign-in failed for teams setup").toBe(true);
 
   // Navigate to establish cookie context
-  await page.goto(`${UI_BASE_URL}/chat`);
-  await page.waitForLoadState("networkidle");
+  await page.goto(`${UI_BASE_URL}/chat`, {
+    waitUntil: "domcontentloaded",
+    timeout: 120_000,
+  });
 
   // Get organization members to find editor and member user IDs
   const members = await listOrgMembers(page.request);

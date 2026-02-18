@@ -7,5 +7,17 @@
         "noConsole": "error"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["src/standalone-scripts/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
+          }
+        }
+      }
+    }
+  ]
 }

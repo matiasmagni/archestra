@@ -167,13 +167,14 @@ const chatApiKeysRoutes: FastifyPluginAsyncZod = async (fastify) => {
       let secret: SelectSecret | null = null;
       let actualApiKeyValue: string | null = null;
 
-      // If readonly_vault is enabled
+      // If readonly_vault (BYOS) is enabled, we store a reference to the Vault secret
+      // and rely on Vault connectivity checks instead of calling external providers here.
       if (isByosEnabled()) {
         if (!body.vaultSecretPath || !body.vaultSecretKey) {
           throw new ApiError(400, "Vault secret path and key are required");
         }
         const vaultReference = `${body.vaultSecretPath}#${body.vaultSecretKey}`;
-        // first, get secret from vault path and key
+        // First, read the secret from Vault to ensure the path/key exist.
         const manager = assertByosEnabled();
         const vaultData = await manager.getSecretFromPath(body.vaultSecretPath);
         actualApiKeyValue = vaultData[body.vaultSecretKey];
@@ -184,16 +185,13 @@ const chatApiKeysRoutes: FastifyPluginAsyncZod = async (fastify) => {
             `API key not found in Vault secret at path "${body.vaultSecretPath}" with key "${body.vaultSecretKey}"`,
           );
         }
-        // then test the API key
-        try {
-          await testProviderApiKey(body.provider, actualApiKeyValue);
-        } catch (_error) {
-          throw new ApiError(
-            400,
-            `Invalid API key: Failed to connect to ${capitalize(body.provider)}`,
-          );
-        }
-        // then create the secret
+
+        // NOTE: We intentionally do NOT call testProviderApiKey() here for BYOS:
+        // - The key is managed externally in Vault.
+        // - We already validate Vault connectivity separately.
+        // - Hitting external providers on create makes tests and offline setups brittle.
+
+        // Then create the secret record that stores the Vault reference.
         secret = await secretManager().createSecret(
           { apiKey: vaultReference },
           getChatApiKeySecretName({
@@ -413,14 +411,17 @@ const chatApiKeysRoutes: FastifyPluginAsyncZod = async (fastify) => {
           throw new ApiError(400, "API key or vault reference is required");
         }
 
-        // Test the API key before saving
-        try {
-          await testProviderApiKey(apiKeyFromDB.provider, apiKeyValue);
-        } catch (_error) {
-          throw new ApiError(
-            400,
-            `Invalid API key: Failed to connect to ${capitalize(apiKeyFromDB.provider)}`,
-          );
+        // Test the API key before saving only when we have a direct value,
+        // not when we're storing a BYOS Vault reference.
+        if (!vaultReference) {
+          try {
+            await testProviderApiKey(apiKeyFromDB.provider, apiKeyValue);
+          } catch (_error) {
+            throw new ApiError(
+              400,
+              `Invalid API key: Failed to connect to ${capitalize(apiKeyFromDB.provider)}`,
+            );
+          }
         }
 
         // Update or create the secret

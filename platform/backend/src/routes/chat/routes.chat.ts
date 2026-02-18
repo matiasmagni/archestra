@@ -18,6 +18,7 @@ import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { hasPermission } from "@/auth";
 import { CacheKey, cacheManager } from "@/cache-manager";
+import mcpClient from "@/clients/mcp-client";
 import { getChatMcpTools } from "@/clients/chat-mcp-client";
 import { isVertexAiEnabled } from "@/clients/gemini-client";
 import {
@@ -37,11 +38,17 @@ import {
   ChatApiKeyModel,
   ConversationEnabledToolModel,
   ConversationModel,
+  InternalMcpCatalogModel,
+  McpServerModel,
   MessageModel,
   TeamModel,
+  ToolModel,
 } from "@/models";
 import { getExternalAgentId } from "@/routes/proxy/utils/external-agent-id";
-import { getSecretValueForLlmProviderApiKey } from "@/secrets-manager";
+import {
+  getSecretValueForLlmProviderApiKey,
+  secretManager,
+} from "@/secrets-manager";
 import {
   ApiError,
   constructResponseSchema,
@@ -613,7 +620,8 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
     {
       schema: {
         operationId: RouteId.GetChatAgentMcpTools,
-        description: "Get MCP tools available for an agent via MCP Gateway",
+        description:
+          "Get MCP tools available for an agent (includes _meta for MCP Apps)",
         tags: ["Chat"],
         params: z.object({ agentId: UuidIdSchema }),
         response: constructResponseSchema(
@@ -622,12 +630,13 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
               name: z.string(),
               description: z.string(),
               parameters: z.record(z.string(), z.any()).nullable(),
+              _meta: z.record(z.string(), z.any()).optional(),
             }),
           ),
         ),
       },
     },
-    async ({ params: { agentId }, user, organizationId, headers }, reply) => {
+    async ({ params: { agentId }, user, headers }, reply) => {
       // Check if user is an agent admin
       const { success: isAgentAdmin } = await hasPermission(
         { profile: ["admin"] },
@@ -638,29 +647,97 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
       const agent = await AgentModel.findById(agentId, user.id, isAgentAdmin);
 
       if (!agent) {
-        return [];
+        return reply.send([]);
       }
 
-      // Fetch MCP tools from gateway (same as used in chat)
-      const mcpTools = await getChatMcpTools({
-        agentName: agent.name,
-        agentId,
-        userId: user.id,
-        organizationId,
-        userIsProfileAdmin: isAgentAdmin,
-        // No conversation context here as this is just fetching available tools
-      });
+      // Fetch MCP tools from DB (includes meta for MCP Apps)
+      const mcpTools = await ToolModel.getMcpToolsByAgent(agentId);
 
-      // Convert AI SDK Tool format to simple array for frontend
-      const tools = Object.entries(mcpTools).map(([name, tool]) => ({
-        name,
-        description: tool.description || "",
-        parameters:
-          (tool.inputSchema as { jsonSchema?: Record<string, unknown> })
-            ?.jsonSchema || null,
+      const tools = mcpTools.map((tool) => ({
+        name: tool.name,
+        description: tool.description ?? "",
+        parameters: tool.parameters ?? null,
+        _meta: (tool.meta ?? undefined) as Record<string, unknown> | undefined,
       }));
 
       return reply.send(tools);
+    },
+  );
+
+  fastify.get(
+    "/api/chat/agents/:agentId/mcp-app-resource",
+    {
+      schema: {
+        description:
+          "Fetch MCP App UI resource (e.g. ui://) for rendering in chat",
+        tags: ["Chat"],
+        params: z.object({ agentId: UuidIdSchema }),
+        querystring: z.object({ uri: z.string().min(1) }),
+      },
+    },
+    async ({ params: { agentId }, query: { uri }, user, headers }, reply) => {
+      const { success: isAgentAdmin } = await hasPermission(
+        { profile: ["admin"] },
+        headers,
+      );
+      const agent = await AgentModel.findById(agentId, user.id, isAgentAdmin);
+      if (!agent) {
+        throw new ApiError(404, "Agent not found");
+      }
+
+      const mcpTools = await ToolModel.getMcpToolsByAgent(agentId);
+      const tool = mcpTools.find(
+        (t) =>
+          (t.meta as { ui?: { resourceUri?: string } } | null)?.ui
+            ?.resourceUri === uri,
+      );
+      if (!tool?.mcpServerId) {
+        throw new ApiError(404, "MCP App resource not found for this agent");
+      }
+
+      const mcpServer = await McpServerModel.findById(tool.mcpServerId);
+      if (!mcpServer?.catalogId) {
+        throw new ApiError(404, "MCP server or catalog not found");
+      }
+
+      const catalogItem = await InternalMcpCatalogModel.findById(
+        mcpServer.catalogId,
+      );
+      if (!catalogItem) {
+        throw new ApiError(404, "Catalog item not found");
+      }
+
+      let secrets: Record<string, unknown> = {};
+      if (mcpServer.secretId) {
+        const secretRecord = await secretManager().getSecret(
+          mcpServer.secretId,
+        );
+        if (secretRecord?.secret) {
+          secrets = secretRecord.secret;
+        }
+      }
+
+      try {
+        const result = await mcpClient.connectAndReadResource({
+          catalogItem,
+          mcpServerId: mcpServer.id,
+          secrets,
+          uri,
+        });
+        const first = result.contents?.[0];
+        if (!first?.text) {
+          throw new ApiError(404, "Resource has no content");
+        }
+        const mimeType = first.mimeType ?? "text/html";
+        return reply.type(mimeType).send(first.text);
+      } catch (err) {
+        if (err instanceof ApiError) throw err;
+        logger.warn({ err, uri, agentId }, "Failed to fetch MCP app resource");
+        throw new ApiError(
+          502,
+          err instanceof Error ? err.message : "Failed to load MCP App",
+        );
+      }
     },
   );
 

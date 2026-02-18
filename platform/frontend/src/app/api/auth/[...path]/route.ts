@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { getBackendBaseUrl } from "@/lib/config";
+import { unwrapNetworkErrorCode } from "@/lib/utils";
 
 /**
  * This catch-all route handles all `/api/auth/*` requests and forwards them to the backend.
@@ -55,15 +56,35 @@ async function handler(
   }
 
   // Forward the request to the backend
-  const response = await fetch(url.toString(), {
-    method: request.method,
-    headers,
-    body:
-      request.method !== "GET" && request.method !== "HEAD"
-        ? await request.text()
-        : undefined,
-    redirect: "manual", // Don't follow redirects, let the browser handle them
-  });
+  let response: Response;
+  try {
+    response = await fetch(url.toString(), {
+      method: request.method,
+      headers,
+      body:
+        request.method !== "GET" && request.method !== "HEAD"
+          ? await request.text()
+          : undefined,
+      redirect: "manual", // Don't follow redirects, let the browser handle them
+    });
+  } catch (err: unknown) {
+    const code = unwrapNetworkErrorCode(err);
+    if (
+      code === "ECONNREFUSED" ||
+      code === "ECONNRESET" ||
+      code === "ETIMEDOUT"
+    ) {
+      return NextResponse.json(
+        {
+          error: "Backend unreachable",
+          message:
+            "Start the full app from platform root: pnpm dev (backend must be running on port 9000).",
+        },
+        { status: 503, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    throw err;
+  }
 
   // Create response headers, copying from backend response
   const responseHeaders = new Headers();

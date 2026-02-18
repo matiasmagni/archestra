@@ -551,6 +551,7 @@ const mcpServerRoutes: FastifyPluginAsyncZod = async (fastify) => {
                   parameters: tool.inputSchema,
                   catalogId: capturedCatalogId,
                   mcpServerId: mcpServer.id,
+                  meta: tool.meta,
                 }));
 
                 // Bulk create tools to avoid N+1 queries
@@ -639,6 +640,7 @@ const mcpServerRoutes: FastifyPluginAsyncZod = async (fastify) => {
           parameters: tool.inputSchema,
           catalogId: catalogItem.id,
           mcpServerId: mcpServer.id,
+          meta: tool.meta,
         }));
 
         // Bulk create tools to avoid N+1 queries

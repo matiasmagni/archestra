@@ -519,9 +519,11 @@ export async function loginViaApi(
       continue;
     }
 
-    if (!response.ok()) {
-    }
-
+    // Log sign-in failure for debugging (credentials, backend not ready, etc.)
+    const body = await response.text().catch(() => "");
+    console.warn(
+      `[loginViaApi] sign-in failed: status=${response.status()} body=${body.slice(0, 200)}`,
+    );
     return false;
   }
 
@@ -541,7 +543,9 @@ export async function loginViaUi(
   email: string,
   password: string,
 ): Promise<void> {
-  await page.getByLabel(/email/i).fill(email);
+  const emailField = page.getByLabel(/email/i);
+  await emailField.waitFor({ state: "visible", timeout: 15_000 });
+  await emailField.fill(email);
   await page.getByLabel(/password/i).fill(password);
   await page.getByRole("button", { name: /sign in|login/i }).click();
 }

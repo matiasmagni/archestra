@@ -418,6 +418,8 @@ class ToolModel {
       parameters: Record<string, unknown>;
       catalogId: string;
       mcpServerId: string;
+      /** MCP tool metadata (e.g. _meta.ui.resourceUri for MCP Apps) */
+      meta?: Record<string, unknown> | null;
     }>,
   ): Promise<Tool[]> {
     if (tools.length === 0) {
@@ -445,10 +447,18 @@ class ToolModel {
     // Prepare tools to insert (only those that don't exist)
     const toolsToInsert: InsertTool[] = [];
     const resultTools: Tool[] = [];
+    // Existing tools that need meta updated (so MCP App _meta is persisted on re-sync)
+    const toolsToUpdateMeta: Array<{ id: string; meta: Record<string, unknown> | null }> = [];
 
     for (const tool of tools) {
       const existingTool = existingToolsByName.get(tool.name);
       if (existingTool) {
+        if (tool.meta !== undefined) {
+          toolsToUpdateMeta.push({
+            id: existingTool.id,
+            meta: (tool.meta ?? null) as Record<string, unknown> | null,
+          });
+        }
         resultTools.push(existingTool);
       } else {
         toolsToInsert.push({
@@ -458,7 +468,31 @@ class ToolModel {
           catalogId: tool.catalogId,
           mcpServerId: tool.mcpServerId,
           agentId: null,
+          meta: (tool.meta ?? undefined) as
+            | Record<string, unknown>
+            | null
+            | undefined,
         });
+      }
+    }
+
+    // Update meta on existing tools so MCP App metadata is persisted on re-sync
+    const updatedMetaById = new Map<string, Tool>();
+    for (const { id, meta } of toolsToUpdateMeta) {
+      const [updated] = await db
+        .update(schema.toolsTable)
+        .set({ meta })
+        .where(eq(schema.toolsTable.id, id))
+        .returning();
+      if (updated) {
+        updatedMetaById.set(id, updated as Tool);
+      }
+    }
+    // Replace resultTools entries with updated rows where we updated meta
+    for (let i = 0; i < resultTools.length; i++) {
+      const updated = updatedMetaById.get(resultTools[i].id);
+      if (updated) {
+        resultTools[i] = updated;
       }
     }
 
